@@ -7,14 +7,12 @@
 The [Defingerprinter Handbook](docs/book/index.md) includes runnable Rust, C, C++, Python, Node.js, Go, and Common Lisp guides, plus privacy, error handling, deployment, and JSONL integration recipes. The language chapters include the checked-in sources from `examples/`.
 
 ```sh
-nix develop -c mdbook serve --hostname 127.0.0.1 --port 3000
-nix build .#book --out-link result-book
-RUSTDOCFLAGS='-D warnings' cargo doc --locked --no-deps
+nix build .#site --out-link result-site
 ```
 
-Read the book at `http://127.0.0.1:3000`, open `result-book/index.html` for static HTML, or open `target/doc/defingerprinter/index.html` for rustdoc. Run `nix develop -c sh scripts/check-docs.sh` to check the documentation and examples.
+Open `result-site/index.html` for the handbook or `result-site/api/defingerprinter/index.html` for Rust API documentation. The sandboxed build uses pinned tools and vendored Cargo dependencies, checks doctests, and needs no model or runtime artifacts. Separate outputs are available as `.#book` and `.#rustdoc`.
 
-Build a combined handbook/API site with `nix develop .#docs -c sh scripts/build-site.sh`, then open `target/site/index.html`. The [GitHub Pages workflow](.github/workflows/pages.yml) publishes on pushes to `trunk` after selecting **GitHub Actions** in the repository's **Settings → Pages**. See [publishing instructions](docs/book/development.md#combined-site-and-github-pages).
+The flake CI workflow discovers and builds packages, checks, development shells, and formatters, then publishes the built site through GitHub Pages. See [publishing instructions](docs/book/development.md#combined-site-and-github-pages).
 
 ## Build with Nix
 
@@ -25,7 +23,7 @@ nix flake check
 
 Outputs include `bin/defingerprinter`, `lib/libdefingerprinter.dylib` (Darwin) or `.so` (Linux), `include/defingerprinter.h`, and `share/common-lisp/source/defingerprinter/`. Model and runtime are separate store outputs, referenced by immutable compile-time paths. Preserve the complete Nix closure when deploying.
 
-The flake exposes `packages.<system>.{default,defingerprinter,model,runtime}` for `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`. Darwin arm64 is the locally tested platform; Linux outputs require native build validation. C ABI and CFFI checks perform actual model inference using compiled defaults.
+The flake exposes `packages.<system>.{default,defingerprinter,model,runtime,book,rustdoc,site}` for `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`. Darwin arm64 is the locally tested platform; Linux outputs require native build validation. C ABI and CFFI checks perform actual model inference using compiled defaults.
 
 Import the local repository from another flake:
 

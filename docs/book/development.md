@@ -1,53 +1,35 @@
 # Development and documentation
 
-## Generate the handbook
-
-```sh
-nix develop -c mdbook build
-nix develop -c mdbook serve --hostname 127.0.0.1 --port 3000
-```
-
-Static HTML is written to `target/book/`. The book has local search, light/dark themes, code-copy controls, and printable HTML from mdBook, with a small custom stylesheet. Source lives in `docs/book/` and `book.toml`.
-
-For a reproducible static package:
-
-```sh
-nix build .#book --out-link result-book
-```
-
-Open `result-book/index.html` or deploy that directory to your static host. Choose your own host and publishing policy; these commands do not publish the documentation.
-
-The language chapters include files from `examples/` directly. Edit the runnable source once rather than duplicating examples into Markdown. Missing chapters fail the build because `create-missing` is disabled.
-
-## Generate Rust API documentation
-
-```sh
-RUSTDOCFLAGS='-D warnings' cargo doc --locked --no-deps
-cargo test --locked --doc
-```
-
-Open `target/doc/defingerprinter/index.html`. Rustdoc covers the public integration APIs and compiles its examples. Inference examples are `no_run` because real model artifacts and runtime paths are setup requirements.
-
 ## Combined site and GitHub Pages
 
 ```sh
-nix develop .#docs -c sh scripts/build-site.sh
+nix build .#site --out-link result-site
 ```
 
-Open `target/site/index.html` for the handbook and `target/site/api/defingerprinter/index.html` for the API. The documentation shell contains the pinned build tools without initializing or downloading model/runtime artifacts.
+Open `result-site/index.html` for the handbook and `result-site/api/defingerprinter/index.html` for Rust API documentation. The flake builds both in the sandbox with pinned tools and vendored Cargo dependencies, treats rustdoc warnings as errors, and checks doctests. Documentation builds need no model or ONNX Runtime artifacts.
 
-The `Documentation` workflow in `.github/workflows/pages.yml` builds this combined site on pushes to `trunk`, then deploys it through GitHub Pages. You can also run it manually from the Actions tab on `trunk`.
+The site is configured for `https://chakanysystems.github.io/defingerprinter/`, including 404 assets under the project subdirectory. The flake CI workflow discovers packages, checks, and development shells from the flake outputs and builds them on native runners. After all build jobs pass, it publishes the built `site` output through GitHub Pages on pushes to `trunk` or a manual run.
 
-In the repository's **Settings → Pages**, select **GitHub Actions** as the publishing source. After enabling Pages and pushing the workflow and documentation commits to `trunk`, the expected site is `https://chakanysystems.github.io/defingerprinter/`, with API docs under `api/defingerprinter/`.
+In the repository's **Settings → Pages**, select **GitHub Actions** as the publishing source. The `github-pages` environment rules must permit `trunk`.
 
-The workflow derives the site's base path from GitHub Pages metadata so the project subdirectory and 404 assets resolve correctly. Deployments use the `github-pages` environment and pinned action revisions. Publishing requires the repository's Pages settings and environment rules to permit that branch.
-
-For a local build with the same project subdirectory:
+## Separate documentation outputs
 
 ```sh
-MDBOOK_OUTPUT__HTML__SITE_URL=/defingerprinter/ \
-  nix develop .#docs -c sh scripts/build-site.sh
+nix build .#book --out-link result-book
+nix build .#rustdoc --out-link result-rustdoc
 ```
+
+Open `result-book/index.html` or `result-rustdoc/defingerprinter/index.html`. The standalone handbook uses relative asset paths.
+
+Source lives in `docs/book/` and `book.toml`. Language chapters include checked-in files from `examples/`; edit the runnable source rather than duplicating it in Markdown. Missing chapters fail the build.
+
+For a local editing server:
+
+```sh
+nix develop .#docs -c mdbook serve --hostname 127.0.0.1 --port 3000
+```
+
+Rustdoc covers public APIs and compiles its examples. Inference examples use `no_run` because execution requires model artifacts and runtime paths.
 
 ## Documentation checks
 

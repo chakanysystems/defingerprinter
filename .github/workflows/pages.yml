@@ -1,20 +1,79 @@
-name: Documentation
+name: CI
 
 on:
   push:
     branches: [trunk]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: false
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: Cache Nix builds
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-gha-cache: enabled
+          use-flakehub: disabled
+      - name: Validate flake outputs
+        run: nix flake check --all-systems --no-build --no-write-lock-file
+      - name: Discover build matrix
+        id: matrix
+        run: |
+          matrix=$(nix eval --json --no-write-lock-file .#githubActions.matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.system }})
+    needs: discover
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - name: Cache Nix builds
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-gha-cache: enabled
+          use-flakehub: disabled
+      - name: Build discovered outputs
+        shell: bash
+        env:
+          FLAKE_ATTRS: ${{ toJSON(matrix.attrs) }}
+        run: |
+          targets=()
+          while IFS= read -r attr; do
+            targets+=(".#$attr")
+          done < <(jq -r '.[]' <<< "$FLAKE_ATTRS")
+          nix build --no-link --print-build-logs --keep-going --no-write-lock-file "${targets[@]}"
+
+  pages:
+    if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -25,7 +84,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Configure Pages
-        id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
@@ -34,20 +92,18 @@ jobs:
         with:
           use-gha-cache: enabled
           use-flakehub: disabled
-      - name: Build handbook and Rust API
-        env:
-          MDBOOK_OUTPUT__HTML__SITE_URL: ${{ format('{0}/', steps.pages.outputs.base_path) }}
-        run: nix develop .#docs -c sh scripts/build-site.sh
+      - name: Retrieve built site
+        run: nix build .#site --out-link result-site --print-build-logs --no-write-lock-file
       - name: Upload site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: target/site
+          path: result-site
           include-hidden-files: true
 
   deploy:
-    if: github.ref == 'refs/heads/trunk'
-    needs: build
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
+    needs: pages
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       pages: write
