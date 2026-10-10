@@ -185,6 +185,31 @@ fn unsupported_script_digits_and_symbols() {
 
 #[test]
 #[ignore = "requires pinned model and local ORT; set RAMPART_MODEL_DIR and RAMPART_RUNTIME"]
+fn actual_model_consumes_complete_credentials_and_identifiers() {
+    let cases = [
+        ("Authorization: Bearer abcdefghijklmnop", "[SECRET]"),
+        ("authorization: Basic YWJjOmRlZg==", "[SECRET]"),
+        (r#"{"token":"moss-green-lantern"}"#, "{[SECRET]}"),
+        (r#"{"api_key":"test-value"}"#, "{[SECRET]}"),
+        (r#"password="ab\"cdefghijk""#, "[SECRET]"),
+        (r#"password='ab\'cdefghijk'"#, "[SECRET]"),
+        ("Contact zqx_75+tag.foo@example.com", "Contact [EMAIL_1]"),
+        (
+            "opaque abcdefghijklmno/pqrstuvwxyz0123456789",
+            "opaque [OPAQUE]",
+        ),
+    ];
+    let mut input = vec![json!({"op":"consent","enabled":true})];
+    input.extend(cases.iter().map(|(text, _)| protect("en", text)));
+    let responses = exchange(&records(&input), true);
+    for (response, (text, expected)) in responses[1..].iter().zip(cases) {
+        assert_eq!(response["ok"], true, "{text}");
+        assert_eq!(response["text"], expected, "{text}");
+    }
+}
+
+#[test]
+#[ignore = "requires pinned model and local ORT; set RAMPART_MODEL_DIR and RAMPART_RUNTIME"]
 fn actual_model_output_bound_and_reconsent() {
     let text = "The operation failed while repairing a damaged object. ".repeat(60);
     let responses = exchange(

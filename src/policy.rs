@@ -41,6 +41,11 @@ fn patterns() -> &'static Patterns {
     PATTERNS.get_or_init(|| {
         // Every expression is fixed source, never input. Compilation failures are programmer errors.
         let re = |s: &str| Regex::new(s).expect("fixed Rampart policy regex");
+        // Escapes belong to the quoted value, including escaped quotes and backslashes.
+        let credential_value = r#"(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;]+)"#;
+        let credentials = re(&format!(
+            r#"(?i)(?:["']?(?-u:\b)authorization["']?\s*[:=]\s*(?:[a-z][a-z0-9+.-]*[ \t]+)?{credential_value}|["']?(?-u:\b)(?:password|passwd|secret|token|api[_-]?key)["']?\s*[:=]\s*{credential_value}|(?-u:\b)Bearer\s+{credential_value})"#
+        ));
         Patterns {
             digit: re(r"[0-9](?:[ .-]?[0-9])*"),
             text: vec![
@@ -57,14 +62,14 @@ fn patterns() -> &'static Patterns {
             right: re(r"^([\s'\u{2019}.-]{1,3})([\p{Lu}][\p{L}\p{M}\u{2019}']{0,3})"),
             extra: vec![
                 (re(r"-----BEGIN [^-\r\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\r\n]*PRIVATE KEY-----"), "[SECRET]"),
-                (re(r#"(?i)(?-u:\b)(?:Bearer\s+[^\s,;]+|(?:password|passwd|secret|token|api[_-]?key|authorization)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+))"#), "[SECRET]"),
+                (credentials, "[SECRET]"),
                 (re(r"(?-u:\b)(?:sk-[A-Za-z0-9_-]+|gh[pousr]_[A-Za-z0-9]+|AKIA[A-Z0-9]{16})(?-u:\b)"), "[SECRET]"),
                 (re(r#"(?i)(?-u:\b)[a-z][a-z0-9+.-]*://[^\s<>"']+"#), "[URL]"),
+                (re(r"(?i)(?-u:\b)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?-u:\b)"), "[ID]"),
+                (re(r"(?-u:\b)[A-Za-z0-9_+/=-]{32,}(?-u:\b)"), "[OPAQUE]"),
                 (re(r#"(?:[A-Za-z]:\\|\\\\)[^\s<>"']+"#), "[PATH]"),
                 (re(r#"(?:/~|~/|/)[^\s<>"']+"#), "[PATH]"),
                 (re(r"(?i)(?-u:\b)(?:[a-z0-9-]+\.)+(?:[a-z]{2,63}|local|internal)(?-u:\b)"), "[HOST]"),
-                (re(r"(?i)(?-u:\b)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?-u:\b)"), "[ID]"),
-                (re(r"(?-u:\b)[A-Za-z0-9_+/=-]{32,}(?-u:\b)"), "[OPAQUE]"),
             ],
         }
     })
@@ -376,19 +381,29 @@ pub fn replace(text: &str, spans: &[Span]) -> String {
     }
     result
 }
-/// Additional credential, path, host and opaque-ID scrub, in JS replacement order.
-/// Preserve email domains until the deterministic email recognizer can mask the whole address.
+/// Additional credential, path, host and opaque-ID scrub.
+/// Opaque IDs precede paths so slashes cannot split a token. Preserve complete
+/// emails during hostname replacement for the deterministic email recognizer.
 pub fn pre_redact(text: &str) -> String {
     patterns()
         .extra
         .iter()
         .fold(text.to_owned(), |text, (re, replacement)| {
             if *replacement == "[HOST]" {
+                let emails: Vec<_> = patterns()
+                    .text
+                    .iter()
+                    .filter(|(label, _)| *label == "EMAIL")
+                    .flat_map(|(_, re)| re.find_iter(&text))
+                    .collect();
                 let mut result = String::new();
                 let mut end = 0;
                 for m in re.find_iter(&text) {
                     result.push_str(&text[end..m.start()]);
-                    if text[..m.start()].ends_with('@') {
+                    if emails
+                        .iter()
+                        .any(|email| m.start() < email.end() && email.start() < m.end())
+                    {
                         result.push_str(m.as_str());
                     } else {
                         result.push_str(replacement);
@@ -407,13 +422,47 @@ pub fn pre_redact(text: &str) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn credential_values_are_consumed_completely() {
+        for text in [
+            "Authorization: Bearer abcdefghijklmnop",
+            "authorization: Basic YWJjOmRlZg==",
+            r#"{"Authorization":"Bearer abcdefghijklmnop"}"#,
+            r#"{"token":"moss-green-lantern"}"#,
+            r#"{"api_key":"test-value"}"#,
+            r#"{'password':'secret with spaces'}"#,
+            r#"password="ab\"cdefghijk""#,
+            r#"password='ab\'cdefghijk'"#,
+            r#"password="ab\\\"cdefghijk""#,
+            r#"Bearer "ab\"cdefghijk""#,
+        ] {
+            let expected = if text.starts_with('{') {
+                "{[SECRET]}"
+            } else {
+                "[SECRET]"
+            };
+            assert_eq!(pre_redact(text), expected, "{text}");
+        }
+        assert_eq!(
+            pre_redact(r#"password="ab\\"; status=ok"#),
+            "[SECRET]; status=ok"
+        );
+    }
+    #[test]
+    fn opaque_identifiers_are_consumed_before_paths() {
+        assert_eq!(
+            pre_redact("opaque abcdefghijklmno/pqrstuvwxyz0123456789"),
+            "opaque [OPAQUE]"
+        );
+    }
+    #[test]
     fn host_scrub_preserves_complete_email_detection() {
-        let text = pre_redact("Contact zqx_75@example.com; inspect example.com");
-        let spans = deterministic(&text);
-        assert_eq!(spans.len(), 1);
-        assert_eq!(&text[spans[0].start..spans[0].end], "zqx_75@example.com");
-        assert!(!replace(&text, &spans).contains("zqx_75"));
-        assert!(text.ends_with("[HOST]"));
+        for email in ["zqx_75@example.com", "zqx_75+tag.foo@example.com"] {
+            let text = pre_redact(&format!("Contact {email}; inspect example.com"));
+            let spans = deterministic(&text);
+            assert_eq!(spans.len(), 1);
+            assert_eq!(&text[spans[0].start..spans[0].end], email);
+            assert_eq!(replace(&text, &spans), "Contact [EMAIL_1]; inspect [HOST]");
+        }
     }
     #[test]
     fn validated_digit_runs() {
