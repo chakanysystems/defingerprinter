@@ -1,0 +1,27 @@
+[package]
+name = "defingerprinter"
+version = "0.1.0"
+edition = "2024"
+description = "Offline native PII redaction with a stable C ABI"
+authors = ["Chakany Systems"]
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-22"] }
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+unicode-normalization = "0.1"
+unicode-general-category = "1"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"
