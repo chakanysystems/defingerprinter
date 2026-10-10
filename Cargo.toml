@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Offline native PII redaction with a stable C ABI"
 authors = ["Chakany Systems"]
+license = "MIT AND CC-BY-4.0"
 
 [workspace]
 

@@ -98,4 +98,6 @@ node scripts/test-reference-parity.mjs
 
 The harness verifies tokenizer fixtures, structured recognizers, multilingual NER, long-window seams, full redaction and consent/protocol boundaries. Node is a reference-test dependency only.
 
-Rampart policy adaptations, model and tokenizer retain National Design Studio attribution under CC BY 4.0. See [`ATTRIBUTION.md`](ATTRIBUTION.md) and [`licenses/CC-BY-4.0.txt`](licenses/CC-BY-4.0.txt). Packages include Rust dependency notices and ONNX Runtime's license and third-party notices. The license for Chakany Systems' original code is pending selection.
+Original Chakany Systems code is licensed under [MIT](LICENSE). Rampart-derived policy material, model and tokenizer are licensed under CC BY 4.0, credited to National Design Studio. See [`ATTRIBUTION.md`](ATTRIBUTION.md) and [`licenses/CC-BY-4.0.txt`](licenses/CC-BY-4.0.txt). Cargo metadata records `MIT AND CC-BY-4.0`; packages include both notices, Rust dependency notices and ONNX Runtime's license and third-party notices.
+
+The Git repository contains source, model revision and hashes. Fetch weights through the Nix build or the manual download recipe; local model and build directories and common weight-file formats are ignored.

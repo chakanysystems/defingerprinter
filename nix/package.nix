@@ -6,7 +6,7 @@ rustPlatform.buildRustPackage {
     root = ../.;
     fileset = lib.fileset.unions [
       ../Cargo.toml ../Cargo.lock ../src ../tests ../include
-      ../ATTRIBUTION.md ../licenses
+      ../LICENSE ../ATTRIBUTION.md ../licenses
       ../defingerprinter.asd ../lisp
       ../scripts/collect-rust-licenses.sh
     ];
@@ -22,11 +22,13 @@ rustPlatform.buildRustPackage {
     mkdir -p "$out/include" "$out/share/licenses/defingerprinter"
     cp -R include/. "$out/include/"
     cp ATTRIBUTION.md "$out/share/licenses/defingerprinter/"
+    cp LICENSE "$out/share/licenses/defingerprinter/"
     cp -R licenses/. "$out/share/licenses/defingerprinter/"
     sh scripts/collect-rust-licenses.sh "$out/share/licenses/defingerprinter"
     bindingDir="$out/share/common-lisp/source/defingerprinter"
     mkdir -p "$bindingDir/tests"
     cp defingerprinter.asd "$bindingDir/"
+    cp LICENSE "$bindingDir/"
     cp -R lisp "$bindingDir/"
     cp tests/cffi.lisp "$bindingDir/tests/"
     test -f "$out/lib/libdefingerprinter${stdenv.hostPlatform.extensions.sharedLibrary}"
@@ -37,6 +39,7 @@ rustPlatform.buildRustPackage {
   meta = {
     description = "Offline Rampart redaction library with a consent-gated C ABI";
     mainProgram = "defingerprinter";
+    license = [ lib.licenses.mit lib.licenses.cc-by-40 ];
     platforms = [ "aarch64-darwin" "aarch64-linux" "x86_64-linux" ];
   };
 }

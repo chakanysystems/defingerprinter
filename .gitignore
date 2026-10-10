@@ -2,6 +2,15 @@
 /result
 /result-*
 /models/
+*.onnx
+*.safetensors
+*.gguf
+*.ggml
+*.pt
+*.pth
+*.ckpt
+pytorch_model*.bin
+model*.bin
 /reference/node_modules/
 *.log
 .DS_Store

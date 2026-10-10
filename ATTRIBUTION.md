@@ -40,7 +40,9 @@ order. These additions are not claims of complete secret or PII detection.
 
 Defingerprinter extracts this native implementation as a Chakany Systems project,
 adds consent-gated C ABI and Common Lisp bindings, and packages the pinned model
-and reduced runtime with Nix. The license for original Chakany Systems code is
-pending selection; this does not alter the upstream CC BY 4.0 attribution.
+and reduced runtime with Nix. Original Chakany Systems code is licensed under
+MIT; see `LICENSE`. Rampart-derived policy material, model and tokenizer are
+licensed under CC BY 4.0 with the National Design Studio credit above.
+The crate's `MIT AND CC-BY-4.0` metadata records both sets of obligations.
 
 This adaptation does not imply endorsement by National Design Studio.
