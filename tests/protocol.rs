@@ -1,4 +1,4 @@
-//! Subprocess coverage of the actual JSONL consent and failure boundaries.
+//! Subprocess coverage of actual JSONL lazy loading and failure boundaries.
 use serde_json::{Value, json};
 use std::{
     env,
@@ -65,32 +65,28 @@ fn protect(language: &str, text: &str) -> Value {
 }
 
 #[test]
-fn consent_failure_revocation_and_admission() {
+fn lazy_loading_failure_and_admission() {
     let requests = records(&[
         json!({"op":"status"}),
-        protect("en", "private-fixture@example.org"),
-        json!({"op":"consent","enabled":true}),
         protect("ru", "private-fixture@example.org"),
         protect("en", "Αlice private-fixture@example.org"),
         protect("en", "private\0fixture"),
         protect("en", &"a".repeat(4097)),
+        json!({"op":"status"}),
         protect("en", "private-fixture@example.org"),
         json!({"op":"status"}),
-        json!({"op":"consent","enabled":false}),
-        protect("en", "private-fixture@example.org"),
+        json!({"op":"benchmark","iterations":1}),
         json!({"op":"status"}),
     ]);
     let responses = exchange(&requests, false);
-    assert_eq!(responses[0]["enabled"], false);
-    assert_eq!(responses[0]["ready"], false);
-    assert_eq!(responses[1]["reason"], "disabled");
-    for response in &responses[3..7] {
+    for index in [0, 5, 7, 9] {
+        assert_eq!(responses[index], json!({"ok":true,"ready":false}));
+    }
+    for response in &responses[1..5] {
         assert_eq!(response["reason"], "unsupported_input");
     }
-    assert_eq!(responses[7]["reason"], "redaction_failed");
-    assert_eq!(responses[8]["ready"], false);
-    assert_eq!(responses[10]["reason"], "disabled");
-    assert_eq!(responses[11]["enabled"], false);
+    assert_eq!(responses[6]["reason"], "redaction_failed");
+    assert_eq!(responses[8]["reason"], "redaction_failed");
     assert!(
         !serde_json::to_string(&responses)
             .unwrap()
@@ -107,16 +103,16 @@ fn rejected_record_draining_and_eof() {
     ];
     input.extend(records(&[
         json!({"op":"status"}),
-        json!({"op":"consent","enabled":true,"extra":"private-fixture"}),
+        json!({"op":"protect","language":"en","text":"private-fixture","extra":true}),
         json!({"op":"status"}),
     ]));
     let responses = exchange(&input, false);
     for response in &responses[..3] {
         assert_eq!(response["reason"], "invalid_request");
     }
-    assert_eq!(responses[3]["enabled"], false);
+    assert_eq!(responses[3], json!({"ok":true,"ready":false}));
     assert_eq!(responses[4]["reason"], "invalid_request");
-    assert_eq!(responses[5]["enabled"], false);
+    assert_eq!(responses[5], json!({"ok":true,"ready":false}));
     assert!(
         !serde_json::to_string(&responses)
             .unwrap()
@@ -126,23 +122,25 @@ fn rejected_record_draining_and_eof() {
 
 #[test]
 #[ignore = "requires pinned model and local ORT; set RAMPART_MODEL_DIR and RAMPART_RUNTIME"]
-fn actual_model_redacts_and_revocation_drops_session() {
+fn actual_model_redacts_and_initializes_lazily() {
     let text = "Alice Johnson email alice@example.org SSN 123-45-6789 card 4111 1111 1111 1111 /Users/alice/private token=sk-synthetic-secret-value";
     let responses = exchange(
         &records(&[
-            protect("en", text),
-            json!({"op":"consent","enabled":true}),
-            protect("en", text),
             json!({"op":"status"}),
-            json!({"op":"consent","enabled":false}),
+            protect("ru", text),
             json!({"op":"status"}),
             protect("en", text),
+            json!({"op":"status"}),
+            protect("en", text),
+            json!({"op":"status"}),
         ]),
         true,
     );
-    assert_eq!(responses[0]["reason"], "disabled");
-    assert_eq!(responses[2]["ok"], true);
-    let safe = responses[2]["text"].as_str().unwrap();
+    assert_eq!(responses[0], json!({"ok":true,"ready":false}));
+    assert_eq!(responses[1]["reason"], "unsupported_input");
+    assert_eq!(responses[2], json!({"ok":true,"ready":false}));
+    assert_eq!(responses[3]["ok"], true);
+    let safe = responses[3]["text"].as_str().unwrap();
     for private in [
         "Alice",
         "Johnson",
@@ -158,10 +156,9 @@ fn actual_model_redacts_and_revocation_drops_session() {
         );
     }
     assert!(safe.contains("["));
-    assert_eq!(responses[3]["ready"], true);
-    assert_eq!(responses[5]["ready"], false);
-    assert_eq!(responses[5]["enabled"], false);
-    assert_eq!(responses[6]["reason"], "disabled");
+    assert_eq!(responses[4], json!({"ok":true,"ready":true}));
+    assert_eq!(responses[5]["text"], responses[3]["text"]);
+    assert_eq!(responses[6], json!({"ok":true,"ready":true}));
 }
 
 #[test]
@@ -174,10 +171,9 @@ fn unsupported_script_digits_and_symbols() {
         "name Аlice",
         "symbol א",
     ];
-    let mut input = vec![json!({"op":"consent","enabled":true})];
-    input.extend(cases.iter().map(|text| protect("en", text)));
+    let input: Vec<_> = cases.iter().map(|text| protect("en", text)).collect();
     let responses = exchange(&records(&input), false);
-    for response in &responses[1..] {
+    for response in &responses {
         assert_eq!(response["reason"], "unsupported_input");
         assert!(response.get("text").is_none());
     }
@@ -199,10 +195,9 @@ fn actual_model_consumes_complete_credentials_and_identifiers() {
             "opaque [OPAQUE]",
         ),
     ];
-    let mut input = vec![json!({"op":"consent","enabled":true})];
-    input.extend(cases.iter().map(|(text, _)| protect("en", text)));
+    let input: Vec<_> = cases.iter().map(|(text, _)| protect("en", text)).collect();
     let responses = exchange(&records(&input), true);
-    for (response, (text, expected)) in responses[1..].iter().zip(cases) {
+    for (response, (text, expected)) in responses.iter().zip(cases) {
         assert_eq!(response["ok"], true, "{text}");
         assert_eq!(response["text"], expected, "{text}");
     }
@@ -210,14 +205,12 @@ fn actual_model_consumes_complete_credentials_and_identifiers() {
 
 #[test]
 #[ignore = "requires pinned model and local ORT; set RAMPART_MODEL_DIR and RAMPART_RUNTIME"]
-fn actual_model_output_bound_and_reconsent() {
+fn actual_model_output_bound_and_session_reuse() {
     let text = "The operation failed while repairing a damaged object. ".repeat(60);
     let responses = exchange(
         &records(&[
-            json!({"op":"consent","enabled":true}),
+            json!({"op":"status"}),
             protect("en", &text),
-            json!({"op":"consent","enabled":false}),
-            json!({"op":"consent","enabled":true}),
             json!({"op":"status"}),
             protect("en", "Contact José García at jose@example.org."),
             json!({"op":"status"}),
@@ -226,10 +219,11 @@ fn actual_model_output_bound_and_reconsent() {
     );
     assert_eq!(responses[1]["ok"], true);
     assert!(responses[1]["text"].as_str().unwrap().chars().count() <= 1024);
-    assert_eq!(responses[4]["ready"], false);
-    let safe = responses[5]["text"].as_str().unwrap();
+    assert_eq!(responses[0], json!({"ok":true,"ready":false}));
+    assert_eq!(responses[2], json!({"ok":true,"ready":true}));
+    let safe = responses[3]["text"].as_str().unwrap();
     assert!(
         !safe.contains("José") && !safe.contains("García") && !safe.contains("jose@example.org")
     );
-    assert_eq!(responses[6]["ready"], true);
+    assert_eq!(responses[4], json!({"ok":true,"ready":true}));
 }

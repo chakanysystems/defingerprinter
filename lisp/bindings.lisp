@@ -1,6 +1,6 @@
 (defpackage #:defingerprinter
   (:use #:cl)
-  (:export #:load-library #:make-redactor #:set-consent #:protect
+  (:export #:load-library #:make-redactor #:protect
            #:close-redactor #:with-redactor #:redactor
            #:setup-error #:setup-error-status))
 (in-package #:defingerprinter)
@@ -17,7 +17,7 @@
 
 (defun status-keyword (code)
   (case code
-    (0 :ok) (1 :invalid-argument) (2 :invalid-handle) (3 :disabled)
+    (0 :ok) (1 :invalid-argument) (2 :invalid-handle)
     (4 :unsupported-input) (5 :artifact-error) (6 :runtime-error)
     (7 :inference-error) (8 :buffer-too-small) (otherwise :internal-error)))
 
@@ -50,7 +50,7 @@ A RETRY restart permits correcting a failed setup without retaining its cause."
                         (committed nil))
                     (unwind-protect
                          (progn
-                           (unless (= 1 (cffi:foreign-funcall-pointer
+                           (unless (= 2 (cffi:foreign-funcall-pointer
                                          (cffi:foreign-symbol-pointer
                                           "defingerprinter_abi_version" :library library)
                                          () :uint32))
@@ -66,7 +66,6 @@ A RETRY restart permits correcting a failed setup without retaining its cause."
 
 (defclass redactor ()
   ((handle :initarg :handle :accessor redactor-handle)
-   (enabled :initform nil :accessor redactor-enabled)
    (lock :initform (bt:make-lock "Defingerprinter context") :reader redactor-lock)))
 
 (defun path-octets (path)
@@ -101,7 +100,7 @@ A RETRY restart permits correcting a failed setup without retaining its cause."
           (create (cffi:null-pointer) 0 (cffi:null-pointer) 0)))))
 
 (defun make-redactor (&key model-directory runtime-library)
-  "Create a disabled context. Omit both paths for immutable Nix defaults.
+  "Create a live context. Omit both paths for immutable Nix defaults.
 Explicit paths must be absolute; model initialization is lazy."
   (loop
     (restart-case
@@ -116,22 +115,6 @@ Explicit paths must be absolute; model initialization is lazy."
             (setup-error (condition) (error condition))
             (error () (setup-failure :artifact-error))))
       (retry () :report "Retry Defingerprinter context setup."))))
-
-(defun set-consent (context enabled)
-  "Set consent; NIL revokes. Return a status keyword.
-Revocation serializes with the complete Lisp protection call, including decoding."
-  (bt:with-lock-held ((redactor-lock context))
-    (unless (redactor-handle context) (return-from set-consent :invalid-handle))
-    (unless (or (eq enabled t) (null enabled))
-      (return-from set-consent :invalid-argument))
-    ;; Fail closed locally even if the native transition fails.
-    (setf (redactor-enabled context) nil)
-    (let ((status (status-keyword
-                   (cffi:foreign-funcall-pointer
-                    (native-symbol "defingerprinter_set_consent") ()
-                    :uint64 (redactor-handle context) :int32 (if enabled 1 0) :int32))))
-      (when (eq status :ok) (setf (redactor-enabled context) (not (null enabled))))
-      status)))
 
 (defun protect-native (context text language)
   (unless (and (stringp text) (stringp language))
@@ -166,17 +149,15 @@ Revocation serializes with the complete Lisp protection call, including decoding
 
 (defun protect (context text &key (language "en"))
   "Return the safe string and :OK, or NIL and a failure status.
-Check consent before inspecting or encoding TEXT or LANGUAGE. No raw-text conditions escape."
+The context lock covers inference and output decoding. No raw-text conditions escape."
   (bt:with-lock-held ((redactor-lock context))
     (unless (redactor-handle context) (return-from protect (values nil :invalid-handle)))
-    (unless (redactor-enabled context) (return-from protect (values nil :disabled)))
     (handler-case (protect-native context text language)
       (error () (values nil :internal-error)))))
 
 (defun close-redactor (context)
   "Destroy a context synchronously. Repeated closes return :OK."
   (bt:with-lock-held ((redactor-lock context))
-    (setf (redactor-enabled context) nil)
     (if (redactor-handle context)
         (let ((status (status-keyword
                        (cffi:foreign-funcall-pointer
@@ -188,7 +169,7 @@ Check consent before inspecting or encoding TEXT or LANGUAGE. No raw-text condit
         :ok)))
 
 (defmacro with-redactor ((variable &rest options) &body body)
-  "Create a disabled context and close it on every exit."
+  "Create a live context and close it on every exit."
   `(let ((,variable (make-redactor ,@options)))
      (unwind-protect (progn ,@body)
        (close-redactor ,variable))))

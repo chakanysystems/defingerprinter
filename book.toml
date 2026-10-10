@@ -1,0 +1,20 @@
+[book]
+title = "The Defingerprinter Handbook"
+authors = ["Chakany Systems"]
+language = "en"
+src = "docs/book"
+description = "Offline diagnostic redaction from Rust, C, C++, Python, JavaScript, Go, and Common Lisp."
+
+[build]
+build-dir = "target/book"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+additional-css = ["docs/book/theme.css"]
+smart-punctuation = true
+git-repository-url = "https://github.com/chakanysystems/defingerprinter"
+
+[output.html.playground]
+runnable = false

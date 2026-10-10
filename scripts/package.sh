@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build machine only. The resulting darwin-arm64 bundle needs no language runtime.
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 [ "$(uname -s)-$(uname -m)" = Darwin-arm64 ] || { echo 'Verified target: macOS arm64' >&2; exit 1; }
 for command in cargo jq shasum tar codesign; do command -v "$command" >/dev/null; done
@@ -35,8 +35,10 @@ cp "$ROOT/README.md" "$BUNDLE/README.md"
 for file in config.json tokenizer.json tokenizer_config.json onnx/model_q4.onnx; do cp "$MODEL/$file" "$BUNDLE/model/$file"; done
 sh scripts/collect-rust-licenses.sh "$BUNDLE/licenses"
 # Validate pinned model bytes and actual inference, using only bundle-relative files.
-printf '%s\n' '{"op":"consent","enabled":true}' '{"op":"protect","language":"en","text":"Contact zqx_75@example.com"}' | "$BUNDLE/defingerprinter" > target/native-bundle-smoke.jsonl
-jq -e -s 'length == 2 and .[1].ok == true and (.[1].text | contains("zqx_75") | not)' target/native-bundle-smoke.jsonl >/dev/null
+printf '%s\n' '{"op":"protect","language":"en","text":"Contact zqx_75@example.com"}' | "$BUNDLE/defingerprinter" > target/native-bundle-smoke.jsonl
+jq -e -s 'length == 1 and .[0].ok == true and (.[0].text | contains("zqx_75") | not)' target/native-bundle-smoke.jsonl >/dev/null
+# SHA256SUMS is excluded from the input file list.
+# shellcheck disable=SC2094
 (cd "$BUNDLE" && find . -type f ! -name SHA256SUMS -exec shasum -a 256 {} \; | LC_ALL=C sort > SHA256SUMS)
 COPYFILE_DISABLE=1 tar -czf "$BUNDLE.tar.gz" -C "$ROOT/target" "$(basename "$BUNDLE")"
 echo "Bundle: $BUNDLE"

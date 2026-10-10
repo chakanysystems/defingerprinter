@@ -14,7 +14,7 @@ nix flake check
 
 C++ module dependency scanning is disabled because no modules are used and `clang-scan-deps` bypasses Nix compiler-wrapper include flags. Darwin minimum-version hook is 13.3, but the pinned SDK/toolchain selects macOS 14.0 during configuration. Treat the Nix output as requiring macOS 14; the older manual artifact below used a separate macOS 13 target.
 
-Nix model fetches are fixed-output downloads pinned to revision `b1993e4e68b082835b80ffc65acc03325ea2e501`. All four files also have compile-time SHA256 checks in Rust. Runtime initialization is consent-gated and lazy, with one CPU thread, disabled spinning, graph optimization and telemetry. Model and runtime paths are compiled into the Nix library.
+Nix model fetches are fixed-output downloads pinned to revision `b1993e4e68b082835b80ffc65acc03325ea2e501`. All four files also have compile-time SHA256 checks in Rust. Runtime initialization is lazy, with one CPU thread, disabled spinning, graph optimization and telemetry. Model and runtime paths are compiled into the Nix library.
 
 C ABI and CFFI flake checks load the actual model. Network isolation during Nix builds depends on the host's sandbox configuration; validate runtime inference separately under a network-denying sandbox when certifying deployment.
 

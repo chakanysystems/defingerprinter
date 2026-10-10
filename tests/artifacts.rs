@@ -59,7 +59,7 @@ fn single_byte_corruption_of_every_artifact_is_rejected() {
     let source = PathBuf::from(env::var("RAMPART_MODEL_DIR").expect("RAMPART_MODEL_DIR required"));
     let directory = Directory::new();
     for (name, _) in ARTIFACTS {
-        fs::copy(source.join(name), directory.0.join(name)).unwrap();
+        fs::write(directory.0.join(name), fs::read(source.join(name)).unwrap()).unwrap();
     }
     for (name, _) in ARTIFACTS {
         let path = directory.0.join(name);
@@ -69,6 +69,6 @@ fn single_byte_corruption_of_every_artifact_is_rejected() {
         bytes[index] ^= 1;
         fs::write(&path, &bytes).unwrap();
         assert_artifact_failure(&directory.0);
-        fs::copy(source.join(name), path).unwrap();
+        fs::write(path, fs::read(source.join(name)).unwrap()).unwrap();
     }
 }

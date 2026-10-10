@@ -39,7 +39,7 @@ ported from Seismograph's `client/index.js` `preRedact`, in the original replace
 order. These additions are not claims of complete secret or PII detection.
 
 Defingerprinter extracts this native implementation as a Chakany Systems project,
-adds consent-gated C ABI and Common Lisp bindings, and packages the pinned model
+adds a versioned C ABI and Common Lisp bindings, and packages the pinned model
 and reduced runtime with Nix. Original Chakany Systems code is licensed under
 MIT; see `LICENSE`. Rampart-derived policy material, model and tokenizer are
 licensed under CC BY 4.0 with the National Design Studio credit above.

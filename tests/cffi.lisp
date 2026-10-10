@@ -48,14 +48,11 @@ omit both to exercise the compiled Nix defaults."
       (check (= 2 (cffi:foreign-funcall-pointer
                    (defingerprinter::native-symbol "defingerprinter_destroy") ()
                    :uint64 *failed-native-handle* :int32))))
-    ;; The disabled gate precedes all input and language validation.
+    ;; A new context accepts protection immediately, without eager model setup.
     (let ((context (apply #'defingerprinter:make-redactor options)))
       (unwind-protect
            (progn
-             (check-status context '(not a string) :disabled :language 42)
-             (check (eq :invalid-argument (defingerprinter:set-consent context "true")))
-             (check-status context '(not a string) :disabled :language 42)
-             (check (eq :ok (defingerprinter:set-consent context t)))
+             (check-status context '(not a string) :invalid-argument :language 42)
              (let ((safe (check-status context "Email alice@example.com." :ok)))
                (check (stringp safe))
                (check (search "[EMAIL_1]" safe))
@@ -66,23 +63,20 @@ omit both to exercise the compiled Nix defaults."
              (check-status context "hello" :unsupported-input :language "zz")
              (check-status context (make-string 16385 :initial-element #\a) :unsupported-input)
              (check-status context 42 :invalid-argument)
-             ;; Concurrent protect/revoke uses a Lisp lock around decoding too.
+             ;; Concurrent protect/close serializes through output decoding too.
              (let ((thread (bt:make-thread
                             (lambda ()
                               (dotimes (index 10)
                                 (declare (ignorable index))
                                 (multiple-value-bind (safe status)
                                     (defingerprinter:protect context "alice@example.com")
-                                  (check (member status '(:ok :disabled)))
-                                  (when (eq status :disabled) (check (null safe)))))))))
-               (check (eq :ok (defingerprinter:set-consent context nil)))
+                                  (check (member status '(:ok :invalid-handle)))
+                                  (when (eq status :invalid-handle) (check (null safe)))))))))
+               (check (eq :ok (defingerprinter:close-redactor context)))
                (bt:join-thread thread))
-             (check-status context '(not a string) :disabled :language 42)
-             (check (eq :ok (defingerprinter:set-consent context t)))
-             (check-status context "alice@example.com" :ok))
+             (check-status context '(not a string) :invalid-handle :language 42))
         (check (eq :ok (defingerprinter:close-redactor context))))
       (check-status context nil :invalid-handle)
-      (check (eq :invalid-handle (defingerprinter:set-consent context t)))
       (check (eq :ok (defingerprinter:close-redactor context))))
     ;; UNWIND-PROTECT in WITH-REDACTOR also handles nonlocal exits.
     (let ((context nil))

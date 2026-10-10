@@ -1,0 +1,11 @@
+(require :asdf)
+(asdf:load-asd (uiop:getenv "DEFINGERPRINTER_ASD"))
+(asdf:load-system "defingerprinter")
+(defingerprinter:load-library (uiop:getenv "DEFINGERPRINTER_LIBRARY"))
+
+(defingerprinter:with-redactor (redactor)
+  (multiple-value-bind (text status)
+      (defingerprinter:protect redactor "Contact alice@example.com" :language "en")
+    (unless (eq status :ok)
+      (error "protect failed: ~A" status))
+    (write-line text)))

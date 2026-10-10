@@ -11,15 +11,17 @@
           model = pkgs.callPackage ./nix/model.nix { };
           runtime = pkgs.callPackage ./nix/runtime.nix { };
           defingerprinter = pkgs.callPackage ./nix/package.nix { inherit model runtime; };
+          book = pkgs.callPackage ./nix/book.nix { };
           sbcl = pkgs.sbcl.withPackages (p: [ p.cffi p.babel p.bordeaux-threads ]);
-        in { inherit pkgs model runtime defingerprinter sbcl; };
+        in { inherit pkgs model runtime defingerprinter book sbcl; };
     in {
       packages = eachSystem (system:
         let p = forSystem system;
-        in { inherit (p) model runtime defingerprinter; default = p.defingerprinter; });
+        in { inherit (p) model runtime defingerprinter book; default = p.defingerprinter; });
       checks = eachSystem (system:
         let p = forSystem system;
         in {
+          book = p.book;
           c-abi = p.pkgs.runCommand "defingerprinter-c-abi-check" {
             nativeBuildInputs = [ p.pkgs.stdenv.cc ];
           } ''
@@ -43,11 +45,16 @@
         });
       devShells = eachSystem (system:
         let p = forSystem system;
-        in { default = p.pkgs.mkShell {
-          packages = [ p.pkgs.cargo p.pkgs.rustc p.pkgs.rustfmt p.pkgs.clippy ];
-          DEFINGERPRINTER_MODEL_DIR = "${p.model}";
-          DEFINGERPRINTER_RUNTIME = "${p.runtime}/lib/libonnxruntime${p.pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
-        }; });
+        in {
+          default = p.pkgs.mkShell {
+            packages = [ p.pkgs.cargo p.pkgs.rustc p.pkgs.rustfmt p.pkgs.clippy p.pkgs.mdbook ];
+            DEFINGERPRINTER_MODEL_DIR = "${p.model}";
+            DEFINGERPRINTER_RUNTIME = "${p.runtime}/lib/libonnxruntime${p.pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+          };
+          docs = p.pkgs.mkShell {
+            packages = [ p.pkgs.cargo p.pkgs.rustc p.pkgs.mdbook p.pkgs.stdenv.cc ];
+          };
+        });
       formatter = eachSystem (system: (forSystem system).pkgs.nixfmt);
     };
 }

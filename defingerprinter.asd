@@ -1,6 +1,6 @@
 (asdf:defsystem "defingerprinter"
   :description "Chakany Systems Defingerprinter C ABI bindings"
-  :version "0.1.0"
+  :version "0.2.0"
   :depends-on ("cffi" "babel" "bordeaux-threads")
   :serial t
   :components ((:file "lisp/bindings"))

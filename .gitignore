@@ -14,3 +14,4 @@ model*.bin
 /reference/node_modules/
 *.log
 .DS_Store
+/examples/__pycache__/

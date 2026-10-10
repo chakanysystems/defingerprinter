@@ -2,6 +2,20 @@
 
 **Chakany Systems** offline diagnostic redaction library. Rust implementation, versioned C ABI, Common Lisp CFFI bindings, and a self-contained Nix flake. The pinned Rampart q4 model runs locally on a reduced CPU-only ONNX Runtime. No runtime model downloads or network access are required.
 
+## Handbook and API documentation
+
+The [Defingerprinter Handbook](docs/book/index.md) includes runnable Rust, C, C++, Python, Node.js, Go, and Common Lisp guides, plus privacy, error handling, deployment, and JSONL integration recipes. The language chapters include the checked-in sources from `examples/`.
+
+```sh
+nix develop -c mdbook serve --hostname 127.0.0.1 --port 3000
+nix build .#book --out-link result-book
+RUSTDOCFLAGS='-D warnings' cargo doc --locked --no-deps
+```
+
+Read the book at `http://127.0.0.1:3000`, open `result-book/index.html` for static HTML, or open `target/doc/defingerprinter/index.html` for rustdoc. Run `nix develop -c sh scripts/check-docs.sh` to check the documentation and examples.
+
+Build a combined handbook/API site with `nix develop .#docs -c sh scripts/build-site.sh`, then open `target/site/index.html`. The [GitHub Pages workflow](.github/workflows/pages.yml) publishes on pushes to `trunk` after selecting **GitHub Actions** in the repository's **Settings → Pages**. See [publishing instructions](docs/book/development.md#combined-site-and-github-pages).
+
 ## Build with Nix
 
 ```sh
@@ -37,24 +51,21 @@ Install the ASDF sources with CFFI, Babel and Bordeaux-Threads. Load the shared 
 (asdf:load-system "defingerprinter")
 (defingerprinter:load-library "/absolute/store/output/lib/libdefingerprinter.dylib")
 (defingerprinter:with-redactor (context)
-  ;; Obtain diagnostic-export consent before enabling or reading diagnostics.
-  (defingerprinter:set-consent context t)
   (multiple-value-bind (text status)
       (defingerprinter:protect context "Contact zqx_75@example.com" :language "en")
     (when (eq status :ok)
-      (write-line text)))
-  (defingerprinter:set-consent context nil))
+      (write-line text))))
 ```
 
-Contexts start disabled and initialize the model lazily. `protect` returns a redacted string and `:ok`, or `nil` and a static status. Consent must be exactly `t` or `nil`. Revocation and closure wait for in-flight protection, including Lisp decoding. Use `with-redactor` or explicitly call `close-redactor`; there is no GC finalizer. Setup failures signal `setup-error` with a static status and a `retry` restart.
+Contexts initialize the model lazily on the first valid protection call. `protect` returns a redacted string and `:ok`, or `nil` and a static status. Closure drops the session and waits for in-flight protection, including Lisp decoding. Use `with-redactor` or explicitly call `close-redactor`; there is no GC finalizer. Setup failures signal `setup-error` with a static status and a `retry` restart.
 
 For a non-Nix build, provide both absolute `:model-directory` and `:runtime-library` paths to `make-redactor`. Load one shared library and one ONNX Runtime path per process. Restart the process to change the runtime.
 
 ## C ABI
 
-See [`include/defingerprinter.h`](include/defingerprinter.h) for the complete version-1 contract. Check `defingerprinter_abi_version`, create a disabled integer handle, enable consent, protect UTF-8 slices into caller-owned storage, then revoke and destroy. Pass `NULL,0` for both artifact paths to use Nix defaults. No allocator ownership crosses the boundary; output is not NUL-terminated. Ignore output on any nonzero status.
+Release 0.2.0 uses the version-2 contract in [`include/defingerprinter.h`](include/defingerprinter.h). Check `defingerprinter_abi_version`, create an integer handle, protect UTF-8 slices into caller-owned storage, then destroy it. Pass `NULL,0` for both artifact paths to use Nix defaults. No allocator ownership crosses the boundary; output is not NUL-terminated. Ignore output on any nonzero status.
 
-Calls serialize per handle. Concurrent calls require distinct output and length storage. Destroyed handles are invalid. Keep the library loaded until all handles and calls finish. Version 1 permits compatible replacements on the same platform and architecture; future incompatible ABI changes require a different version. Model behavior is separately pinned, not an ABI guarantee.
+Calls serialize per handle. Destruction drops the session and waits for in-flight work. Concurrent calls require distinct output and length storage. Destroyed handles are invalid. Keep the library loaded until all handles and calls finish. Version 2 permits compatible replacements on the same platform and architecture; future incompatible ABI changes require a different version. Status value 3 is reserved; all other status values retain their numbering. Model behavior is separately pinned, not an ABI guarantee.
 
 ## Policy and privacy
 
@@ -62,18 +73,17 @@ The pipeline combines credential/path/host/opaque-identifier scrubbing, determin
 
 Declare `en`, `es`, `fr`, `de`, `it`, `pt`, or `nl`. Input is bounded to 16,384 UTF-8 bytes and 4,096 Unicode scalars, Latin/Common/Inherited scripts and ASCII digits. Output is capped at 1,024 scalars. Unsupported input, artifact corruption and inference failure return no text, without a heuristic fallback. The caller's language declaration is not language detection.
 
-Redaction is probabilistic, not guaranteed anonymity. Export only short, deliberately constructed diagnostic summaries under explicit consent. Enforce consent before reading diagnostic fields; on failure omit the summary. Coordinate revocation with any caller-side export queue, since a previously returned string is caller-owned. Numeric telemetry is independent of diagnostic text.
+Redaction is probabilistic, not guaranteed anonymity. Prefer short, deliberately constructed diagnostic summaries; on failure omit the summary. Callers choose appropriate authorization, export, and retention policies. Previously returned strings are caller-owned. Numeric telemetry is independent of diagnostic text.
 
-Inference uses one CPU thread with spinning, graph optimization and runtime telemetry disabled. No input text is written to disk by the implementation. Revocation drops the model session, but allocator caches and the process-global runtime may retain memory until process exit. Use a supervised subprocess when hard deadlines or process-isolated reclamation are required.
+Inference uses one CPU thread with spinning, graph optimization and runtime telemetry disabled. No input text is written to disk by the implementation. Closure drops the model session, but allocator caches and the process-global runtime may retain memory until process exit. Use a supervised subprocess when hard deadlines or process-isolated reclamation are required.
 
 ## JSONL CLI
 
 The optional `defingerprinter` executable accepts sequential UTF-8 JSONL requests:
 
 ```json
-{"op":"consent","enabled":true}
 {"op":"protect","language":"en","text":"Contact zqx_75@example.com"}
-{"op":"consent","enabled":false}
+{"op":"status"}
 ```
 
 Use only `text` from an `ok:true` response. On failure, malformed response, EOF or timeout, omit the summary. Records are bounded to 32,768 bytes. Set explicit artifact paths with `--model-dir PATH --runtime PATH` for manual builds; portable bundle defaults resolve relative to the executable. `{"op":"benchmark","iterations":100}` measures a fixed synthetic diagnostic locally.
@@ -96,7 +106,7 @@ RAMPART_RUNTIME=/absolute/libonnxruntime.dylib \
 node scripts/test-reference-parity.mjs
 ```
 
-The harness verifies tokenizer fixtures, structured recognizers, multilingual NER, long-window seams, full redaction and consent/protocol boundaries. Node is a reference-test dependency only.
+The harness verifies tokenizer fixtures, structured recognizers, multilingual NER, long-window seams, full redaction and protocol boundaries. Node is a reference-test dependency only.
 
 Original Chakany Systems code is licensed under [MIT](LICENSE). Rampart-derived policy material, model and tokenizer are licensed under CC BY 4.0, credited to National Design Studio. See [`ATTRIBUTION.md`](ATTRIBUTION.md) and [`licenses/CC-BY-4.0.txt`](licenses/CC-BY-4.0.txt). Cargo metadata records `MIT AND CC-BY-4.0`; packages include both notices, Rust dependency notices and ONNX Runtime's license and third-party notices.
 

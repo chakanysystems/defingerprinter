@@ -1,7 +1,7 @@
 { lib, stdenv, rustPlatform, jq, model, runtime }:
 rustPlatform.buildRustPackage {
   pname = "defingerprinter";
-  version = "0.1.0";
+  version = "0.2.0";
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -37,7 +37,7 @@ rustPlatform.buildRustPackage {
   '';
   passthru = { inherit model runtime; };
   meta = {
-    description = "Offline Rampart redaction library with a consent-gated C ABI";
+    description = "Offline Rampart redaction library with a versioned C ABI";
     mainProgram = "defingerprinter";
     license = [ lib.licenses.mit lib.licenses.cc-by-40 ];
     platforms = [ "aarch64-darwin" "aarch64-linux" "x86_64-linux" ];

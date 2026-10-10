@@ -1,0 +1,28 @@
+/* Traditional book typography with mdBook's theme controls. */
+:root {
+    --content-max-width: 900px;
+}
+html {
+    font-family: Georgia, "Times New Roman", serif;
+}
+.content main {
+    line-height: 1.65;
+}
+.content h1, .content h2, .content h3 {
+    letter-spacing: normal;
+}
+.content h1 {
+    margin-bottom: 1.1em;
+}
+.content table {
+    display: block;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+}
+.content td, .content th {
+    padding: 0.65rem 0.85rem;
+}
+.content pre {
+    border: 1px solid var(--table-border-color);
+    border-radius: 3px;
+}

@@ -1,4 +1,4 @@
-/* Chakany Systems. Stable Defingerprinter C ABI, version 1. */
+/* Chakany Systems. Stable Defingerprinter C ABI, version 2. */
 #ifndef DEFINGERPRINTER_H
 #define DEFINGERPRINTER_H
 #include <stddef.h>
@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 typedef uint64_t defingerprinter_handle;
-#define DEFINGERPRINTER_ABI_VERSION 1u
+#define DEFINGERPRINTER_ABI_VERSION 2u
 #define DEFINGERPRINTER_MAX_INPUT_BYTES 16384u
 #define DEFINGERPRINTER_OUTPUT_CAPACITY 4096u
 
@@ -16,7 +16,7 @@ enum defingerprinter_status {
     DEFINGERPRINTER_OK = 0,
     DEFINGERPRINTER_INVALID_ARGUMENT = 1,
     DEFINGERPRINTER_INVALID_HANDLE = 2,
-    DEFINGERPRINTER_DISABLED = 3,
+    /* Code 3 is reserved. */
     DEFINGERPRINTER_UNSUPPORTED_INPUT = 4,
     DEFINGERPRINTER_ARTIFACT_ERROR = 5,
     DEFINGERPRINTER_RUNTIME_ERROR = 6,
@@ -27,16 +27,16 @@ enum defingerprinter_status {
 
 uint32_t defingerprinter_abi_version(void);
 /* UTF-8 absolute paths, each <=4096 bytes. Pass NULL,0 for BOTH paths to use
-   immutable Nix build defaults. Starts disabled; does not load the model.
+   immutable Nix build defaults. Does not load the model.
    out_handle must be writable. It is zero on error. */
 int32_t defingerprinter_create(const uint8_t *model_dir, size_t model_dir_len,
     const uint8_t *runtime, size_t runtime_len, defingerprinter_handle *out_handle);
-/* enabled is exactly 0 or 1. Revocation waits for in-flight work and drops the session. */
-int32_t defingerprinter_set_consent(defingerprinter_handle handle, int32_t enabled);
+/* Lifecycle: create, protect, destroy. Collection, retention and privacy policy
+   are the caller's responsibility. */
 /* UTF-8 slices. Language is en/es/fr/de/it/pt/nl. Caller owns the output buffer
    (>=OUTPUT_CAPACITY bytes) and written. Output is NOT NUL-terminated.
    written is zero on failure; ignore the buffer on failure. No text is retained
-   for retries. Consent is checked before reading language/input/output.
+   for retries. Destroyed handles reject calls before reading the slices.
    All non-null pointers used by a call must reference valid memory for the stated
    length, and written must be valid and disjoint from the slices. Each concurrent
    call must use distinct output and written storage. Model execution/publication

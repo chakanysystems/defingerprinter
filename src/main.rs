@@ -1,4 +1,4 @@
-//! Bounded JSONL, disabled until explicit consent. No raw diagnostic error output.
+//! Bounded JSONL with lazy local inference. No raw diagnostic error output.
 use defingerprinter::{
     RedactionError,
     engine::{compiled_paths, supported},
@@ -16,13 +16,11 @@ const MAX_LINE: usize = 32768;
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
-    Consent { enabled: bool },
     Protect { language: String, text: String },
     Status,
     Benchmark { iterations: usize },
 }
 struct State {
-    enabled: bool,
     model: Option<Model>,
     directory: PathBuf,
     runtime: PathBuf,
@@ -30,20 +28,10 @@ struct State {
 impl State {
     fn handle(&mut self, request: Request) -> Value {
         match request {
-            Request::Consent { enabled } => {
-                self.enabled = enabled;
-                if !enabled {
-                    self.model = None;
-                }
-                json!({"ok":true,"enabled":enabled})
-            }
             Request::Status => {
-                json!({"ok":true,"enabled":self.enabled,"ready":self.model.is_some()})
+                json!({"ok":true,"ready":self.model.is_some()})
             }
             Request::Protect { language, text } => {
-                if !self.enabled {
-                    return dropped("disabled");
-                }
                 if !supported(&language, &text) {
                     return dropped("unsupported_input");
                 }
@@ -59,9 +47,6 @@ impl State {
                 }
             }
             Request::Benchmark { iterations } => {
-                if !self.enabled {
-                    return dropped("disabled");
-                }
                 if !(1..=1000).contains(&iterations) {
                     return dropped("invalid_request");
                 }
@@ -152,7 +137,6 @@ fn run() -> Result<(), ()> {
         }
     }
     let mut state = State {
-        enabled: false,
         model: None,
         directory,
         runtime,
@@ -183,21 +167,13 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
-    fn consent_gates_artifacts_and_revocation() {
+    fn direct_protection_loads_lazily_and_failure_resets_session() {
         let mut s = State {
-            enabled: false,
             model: None,
             directory: "missing".into(),
             runtime: "missing".into(),
         };
-        assert_eq!(
-            s.handle(Request::Protect {
-                language: "en".into(),
-                text: "Alice".into()
-            })["reason"],
-            "disabled"
-        );
-        s.handle(Request::Consent { enabled: true });
+        assert_eq!(s.handle(Request::Status), json!({"ok":true,"ready":false}));
         assert_eq!(
             s.handle(Request::Protect {
                 language: "en".into(),
@@ -205,8 +181,12 @@ mod tests {
             })["reason"],
             "redaction_failed"
         );
-        s.handle(Request::Consent { enabled: false });
-        assert!(!s.enabled && s.model.is_none());
+        assert!(s.model.is_none());
+        assert_eq!(
+            s.handle(Request::Benchmark { iterations: 1 })["reason"],
+            "redaction_failed"
+        );
+        assert!(s.model.is_none());
     }
     #[test]
     fn unsupported_scripts_and_bounds() {
@@ -219,7 +199,6 @@ mod tests {
     #[test]
     fn unsupported_numeric_scripts_drop_before_load() {
         let mut s = State {
-            enabled: true,
             model: None,
             directory: "missing".into(),
             runtime: "missing".into(),

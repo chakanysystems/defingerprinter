@@ -1,5 +1,38 @@
-//! Versioned C ABI. Caller-owned byte buffers avoid cross-allocator ownership.
-//! Handles are monotonic integers, not pointers into Rust memory.
+//! Version-2 C ABI with caller-owned UTF-8 byte buffers.
+//!
+//! Use the declarations in `include/defingerprinter.h` and check
+//! [`defingerprinter_abi_version`] before creating a context. Handles are opaque,
+//! monotonically allocated `u64` integers, not pointers. Create a handle, protect
+//! text, then destroy the handle. No artifact loading occurs until an admitted
+//! request. Collection and privacy policy are the caller's responsibility.
+//!
+//! Every operation other than the version query returns an `i32` [`Status`].
+//! Only status zero permits consumption of output. On failure, `written` is
+//! zero and the output buffer must be ignored: it may contain an earlier result.
+//! Output is UTF-8 with an explicit byte count, without a NUL terminator. Allocate
+//! at least [`engine::OUTPUT_CAPACITY`] bytes even for short or empty inputs.
+//! There is no size-query or retained-result retry protocol.
+//!
+//! # Ownership and concurrency
+//!
+//! Rust copies path strings during creation and borrows diagnostic input only
+//! for the duration of a call. Allocate and release byte buffers in the calling
+//! language; there is no Rust-allocated string to free across the ABI.
+//! Calls serialize per handle, including output publication. Different handles
+//! may run concurrently. Destruction waits for earlier in-flight work on that
+//! handle; after successful destruction returns, earlier calls cannot publish
+//! more output. Supply separate writable storage to concurrent
+//! calls. Never unload the library with live handles or calls in flight.
+//! The ONNX Runtime is process-global; use one compatible runtime across handles.
+//!
+//! Invalid pointer addresses cannot be validated by Rust. Catching Rust panics
+//! at the ABI boundary does not make invalid foreign memory safe.
+//!
+//! ```
+//! use defingerprinter::ffi::{defingerprinter_abi_version, Status};
+//! assert_eq!(defingerprinter_abi_version(), 2);
+//! assert_eq!(Status::Ok as i32, 0);
+//! ```
 use crate::{
     RedactionError,
     engine::{self, Redactor},
@@ -11,18 +44,29 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
+/// Numeric result codes for ABI version 2. Code 3 is reserved.
+///
+/// Treat every nonzero value, including unknown future values, as failure.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
+    /// Success; output and its reported byte count may be consumed.
     Ok = 0,
+    /// Invalid path, pointer/length combination, or output pointer.
     InvalidArgument = 1,
+    /// Unknown, destroyed, or already-closed handle.
     InvalidHandle = 2,
-    Disabled = 3,
+    /// Unsupported tag, invalid UTF-8 diagnostic/path text, or rejected input policy.
     UnsupportedInput = 4,
+    /// Missing compile-time paths or invalid pinned model artifacts.
     ArtifactError = 5,
+    /// Native runtime loading or model session creation failed.
     RuntimeError = 6,
+    /// Tensor creation, model execution, or output validation failed.
     InferenceError = 7,
+    /// Output capacity is below [`engine::OUTPUT_CAPACITY`]; no size query is supported.
     BufferTooSmall = 8,
+    /// A caught Rust panic, poisoned lock, or internal registry failure.
     InternalError = 9,
 }
 impl From<RedactionError> for Status {
@@ -36,7 +80,7 @@ impl From<RedactionError> for Status {
     }
 }
 struct Entry {
-    redactor: Redactor,
+    redactor: Option<Redactor>,
     closed: bool,
 }
 struct Registry {
@@ -77,15 +121,30 @@ unsafe fn utf8<'a>(pointer: *const u8, length: usize, maximum: usize) -> Result<
     std::str::from_utf8(bytes).map_err(|_| Status::UnsupportedInput)
 }
 
+/// Return the supported C ABI version, currently `2`.
+///
+/// This query does not create a context or load any artifacts.
 #[unsafe(no_mangle)]
 pub extern "C" fn defingerprinter_abi_version() -> u32 {
-    1
+    2
 }
 
-/// Create a disabled context without examining any diagnostic or model file.
+/// Create a context without examining any diagnostic or model file.
+///
+/// Supply two absolute UTF-8 paths, each at most 4,096 bytes and without NUL
+/// characters: the model directory and native runtime shared library. Lengths
+/// exclude any terminator. Pass NULL/0 for **both** paths to select
+/// [`engine::compiled_paths`]; missing defaults return [`Status::ArtifactError`].
+/// Paths are copied but files are not checked until protection is attempted.
+/// `out_handle` is set to zero before processing and receives a nonzero handle
+/// only on success. Destroy that handle with [`defingerprinter_destroy`].
+///
 /// # Safety
-/// Path pointers must be readable for the stated lengths, or both NULL/0 for Nix defaults.
-/// `out_handle` must be valid writable u64 memory disjoint from the path slices.
+///
+/// Non-default path pointers must reference initialized, readable byte slices
+/// of the stated lengths, valid for this call and within one allocation.
+/// `out_handle` must be aligned, valid writable `u64` memory, disjoint from both
+/// path slices. Do not concurrently access that memory while this call writes it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn defingerprinter_create(
     model_dir: *const u8,
@@ -121,7 +180,7 @@ pub unsafe extern "C" fn defingerprinter_create(
         registry.entries.insert(
             handle,
             Arc::new(Mutex::new(Entry {
-                redactor: Redactor::new(directory, runtime),
+                redactor: Some(Redactor::new(directory, runtime)),
                 closed: false,
             })),
         );
@@ -132,29 +191,31 @@ pub unsafe extern "C" fn defingerprinter_create(
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn defingerprinter_set_consent(handle: u64, enabled: i32) -> i32 {
-    boundary(|| {
-        if enabled != 0 && enabled != 1 {
-            return Err(Status::InvalidArgument);
-        }
-        let entry = entry(handle)?;
-        let mut entry = entry.lock().map_err(|_| Status::InternalError)?;
-        if entry.closed {
-            return Err(Status::InvalidHandle);
-        }
-        entry.redactor.set_consent(enabled == 1);
-        Ok(())
-    })
-}
-
-/// Redact into a caller-owned buffer. No source text is returned on error.
+/// Redact UTF-8 text into a caller-owned buffer, returning a numeric [`Status`].
+///
+/// `language` is an exact two-byte tag (`en`, `es`, `fr`, `de`, `it`, `pt`, `nl`).
+/// Input must satisfy [`engine::supported`]. Empty input may use NULL/0.
+/// Output capacity must be at least [`engine::OUTPUT_CAPACITY`] bytes. On success,
+/// the first `*written` bytes contain UTF-8, without a NUL terminator; the count
+/// is a byte count, not a character count. Output may be truncated to
+/// [`engine::MAX_OUTPUT_CHARS`] Unicode scalar values.
+///
+/// `written` is zeroed before handle checks. Stale handles reject the call
+/// before dereferencing language, input, or output.
+/// On every failure, ignore the output buffer, including any previous contents.
+/// No source text or result is retained for retries. Rust panics caught at the
+/// boundary return [`Status::InternalError`].
+///
 /// # Safety
-/// `written` must be writable and disjoint from all slices. On an enabled context,
-/// input/language must be readable and output writable for the stated lengths.
-/// Each concurrent call must own distinct output and `written` storage.
-/// Pointers are not dereferenced when a disabled/stale handle rejects the call,
-/// except for `written`, which is always set to zero before processing.
+///
+/// `written` must be aligned, valid writable `usize` memory, disjoint from all
+/// byte slices for the entire call. Language and nonempty
+/// input must reference initialized readable memory for their stated lengths;
+/// output must reference writable memory for its stated capacity. Each slice
+/// must lie within one allocation and satisfy Rust's slice size requirements.
+/// Keep input and language immutable during the call and use separate output
+/// and `written` storage for each concurrent call. Do not access output while
+/// the call writes it. The library neither takes ownership nor frees buffers.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn defingerprinter_protect(
     handle: u64,
@@ -178,9 +239,6 @@ pub unsafe extern "C" fn defingerprinter_protect(
         if entry.closed {
             return Err(Status::InvalidHandle);
         }
-        if !entry.redactor.enabled() {
-            return Err(Status::Disabled);
-        }
         if language_len != 2 || input_len > engine::MAX_INPUT_BYTES {
             return Err(Status::UnsupportedInput);
         }
@@ -198,9 +256,11 @@ pub unsafe extern "C" fn defingerprinter_protect(
         };
         let text = entry
             .redactor
+            .as_mut()
+            .ok_or(Status::InvalidHandle)?
             .protect(language, input)
             .map_err(Status::from)?;
-        // The lock covers publication too: after revocation returns, no earlier call can publish text.
+        // The lock covers publication: destruction waits until output is complete.
         unsafe {
             std::ptr::copy_nonoverlapping(text.as_ptr(), output, text.len());
             written.write(text.len());
@@ -209,6 +269,12 @@ pub unsafe extern "C" fn defingerprinter_protect(
     })
 }
 
+/// Remove a handle, wait for outstanding work, and drop its model session.
+///
+/// Safe for concurrent callers. Unknown, stale, and duplicate handles return
+/// [`Status::InvalidHandle`]. Destruction does not reset the process-global
+/// runtime. Do not unload the library until all handles have
+/// been destroyed and all calls have returned.
 #[unsafe(no_mangle)]
 pub extern "C" fn defingerprinter_destroy(handle: u64) -> i32 {
     boundary(|| {
@@ -220,7 +286,7 @@ pub extern "C" fn defingerprinter_destroy(handle: u64) -> i32 {
             .ok_or(Status::InvalidHandle)?;
         let mut entry = entry.lock().map_err(|_| Status::InternalError)?;
         entry.closed = true;
-        entry.redactor.set_consent(false);
+        drop(entry.redactor.take());
         Ok(())
     })
 }
@@ -247,35 +313,87 @@ mod tests {
         handle
     }
     #[test]
-    fn disabled_context_never_reads_payload_or_output() {
+    fn destruction_closes_existing_entry_references() {
         let handle = create();
+        let retained = entry(handle).unwrap();
+        assert_eq!(defingerprinter_destroy(handle), Status::Ok as i32);
+        let entry = retained.lock().unwrap();
+        assert!(entry.closed);
+        assert!(entry.redactor.is_none());
+        assert_eq!(
+            defingerprinter_destroy(handle),
+            Status::InvalidHandle as i32
+        );
         let mut written = 9;
         assert_eq!(
             unsafe {
                 defingerprinter_protect(
                     handle,
-                    std::ptr::dangling::<u8>(),
+                    std::ptr::null(),
                     2,
-                    std::ptr::dangling::<u8>(),
+                    std::ptr::null(),
                     100,
-                    std::ptr::dangling_mut::<u8>(),
-                    4096,
+                    std::ptr::null_mut(),
+                    0,
                     &mut written,
                 )
             },
-            Status::Disabled as i32
-        );
-        assert_eq!(written, 0);
-        assert_eq!(defingerprinter_destroy(handle), 0);
-        assert_eq!(
-            defingerprinter_destroy(handle),
             Status::InvalidHandle as i32
         );
+        assert_eq!(written, 0);
+    }
+    #[test]
+    fn destruction_waits_for_locked_entry() {
+        let handle = create();
+        let retained = entry(handle).unwrap();
+        let guard = retained.lock().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let destroyer = std::thread::spawn(move || {
+            sender.send(defingerprinter_destroy(handle)).unwrap();
+        });
+        // Removal precedes locking: wait until destruction reaches the entry lock.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while entry(handle).is_ok() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        drop(guard);
+        assert_eq!(
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap(),
+            Status::Ok as i32
+        );
+        destroyer.join().unwrap();
+        assert!(retained.lock().unwrap().redactor.is_none());
+    }
+    #[test]
+    fn null_written_is_rejected() {
+        let handle = create();
+        assert_eq!(
+            unsafe {
+                defingerprinter_protect(
+                    handle,
+                    std::ptr::null(),
+                    2,
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null_mut(),
+                )
+            },
+            Status::InvalidArgument as i32
+        );
+        assert_eq!(defingerprinter_destroy(handle), Status::Ok as i32);
     }
     #[test]
     fn admission_errors_clear_length_and_do_not_load_model() {
         let handle = create();
-        assert_eq!(defingerprinter_set_consent(handle, 1), 0);
         let mut output = [0u8; 4096];
         let mut written = 99;
         for input in ["Αlice", "١٢٣٤٥٦٧٨٩", "Alice\0Johnson"] {
@@ -312,7 +430,6 @@ mod tests {
             Status::ArtifactError as i32
         );
         assert_eq!(written, 0);
-        assert_eq!(defingerprinter_set_consent(handle, 0), 0);
         assert_eq!(defingerprinter_destroy(handle), 0);
     }
     #[test]
