@@ -1,18 +1,16 @@
 # Defingerprinter
 
-**Chakany Systems** offline diagnostic redaction library. Rust implementation, versioned C ABI, Common Lisp CFFI bindings, and a self-contained Nix flake. The pinned Rampart q4 model runs locally on a reduced CPU-only ONNX Runtime. No runtime model downloads or network access are required.
+Defingerprinter is an offline diagnostic redaction library. It's implemented in Rust, with a versioned C ABI, Common Lisp CFFI bindings, and a self-contained Nix flake. The pinned Rampart q4 model runs locally on a reduced CPU-only ONNX Runtime. No runtime model downloads or network access are required.
 
-## Handbook and API documentation
+## Policy and privacy
 
-The [Defingerprinter Handbook](docs/book/index.md) includes runnable Rust, C, C++, Python, Node.js, Go, and Common Lisp guides, plus privacy, error handling, deployment, and JSONL integration recipes. The language chapters include the checked-in sources from `examples/`.
+The pipeline combines credential/path/host/opaque-identifier scrubbing, deterministic structured recognizers, mapped sentinel pre-masking, WordPiece NER, overlapping word-aligned windows, span repair, and default-deny placeholders. It redacts every detected label. Placeholder identity is request-local; no rehydration table is exported.
 
-```sh
-nix build .#site --out-link result-site
-```
+Declare `en`, `es`, `fr`, `de`, `it`, `pt`, or `nl`. Input is bounded to 16,384 UTF-8 bytes and 4,096 Unicode scalars, Latin/Common/Inherited scripts and ASCII digits. Output is capped at 1,024 scalars. Unsupported input, artifact corruption and inference failure return no text, without a heuristic fallback. The caller's language declaration is not language detection.
 
-Open `result-site/index.html` for the handbook or `result-site/api/defingerprinter/index.html` for Rust API documentation. The sandboxed build uses pinned tools and vendored Cargo dependencies, checks doctests, and needs no model or runtime artifacts. Separate outputs are available as `.#book` and `.#rustdoc`.
+Redaction is probabilistic, not guaranteed anonymity. Prefer short, deliberately constructed diagnostic summaries; on failure omit the summary. Callers choose appropriate authorization, export, and retention policies. Previously returned strings are caller-owned. Numeric telemetry is independent of diagnostic text.
 
-The flake CI workflow discovers and builds packages, checks, development shells, and formatters, then publishes the built site through GitHub Pages. See [publishing instructions](docs/book/development.md#combined-site-and-github-pages).
+Inference uses one CPU thread with spinning, graph optimization and runtime telemetry disabled. No input text is written to disk by the implementation. Closure drops the model session, but allocator caches and the process-global runtime may retain memory until process exit. Use a supervised subprocess when hard deadlines or process-isolated reclamation are required.
 
 ## Build with Nix
 
@@ -65,16 +63,6 @@ Release 0.1.0 uses the version-2 contract in [`include/defingerprinter.h`](inclu
 
 Calls serialize per handle. Destruction drops the session and waits for in-flight work. Concurrent calls require distinct output and length storage. Destroyed handles are invalid. Keep the library loaded until all handles and calls finish. Version 2 permits compatible replacements on the same platform and architecture; future incompatible ABI changes require a different version. Status value 3 is reserved; all other status values retain their numbering. Model behavior is separately pinned, not an ABI guarantee.
 
-## Policy and privacy
-
-The pipeline combines credential/path/host/opaque-identifier scrubbing, deterministic structured recognizers, mapped sentinel pre-masking, WordPiece NER, overlapping word-aligned windows, span repair, and default-deny placeholders. It redacts every detected label. Placeholder identity is request-local; no rehydration table is exported.
-
-Declare `en`, `es`, `fr`, `de`, `it`, `pt`, or `nl`. Input is bounded to 16,384 UTF-8 bytes and 4,096 Unicode scalars, Latin/Common/Inherited scripts and ASCII digits. Output is capped at 1,024 scalars. Unsupported input, artifact corruption and inference failure return no text, without a heuristic fallback. The caller's language declaration is not language detection.
-
-Redaction is probabilistic, not guaranteed anonymity. Prefer short, deliberately constructed diagnostic summaries; on failure omit the summary. Callers choose appropriate authorization, export, and retention policies. Previously returned strings are caller-owned. Numeric telemetry is independent of diagnostic text.
-
-Inference uses one CPU thread with spinning, graph optimization and runtime telemetry disabled. No input text is written to disk by the implementation. Closure drops the model session, but allocator caches and the process-global runtime may retain memory until process exit. Use a supervised subprocess when hard deadlines or process-isolated reclamation are required.
-
 ## JSONL CLI
 
 The optional `defingerprinter` executable accepts sequential UTF-8 JSONL requests:
@@ -104,8 +92,18 @@ RAMPART_RUNTIME=/absolute/libonnxruntime.dylib \
 node scripts/test-reference-parity.mjs
 ```
 
-The harness verifies tokenizer fixtures, structured recognizers, multilingual NER, long-window seams, full redaction and protocol boundaries. Node is a reference-test dependency only.
+## Handbook and API documentation
+
+The [Defingerprinter Handbook](docs/book/index.md) includes runnable Rust, C, C++, Python, Node.js, Go, and Common Lisp guides, plus privacy, error handling, deployment, and JSONL integration recipes. The language chapters include the checked-in sources from `examples/`.
+
+```sh
+nix build .#site --out-link result-site
+```
+
+Open `result-site/index.html` for the handbook or `result-site/api/defingerprinter/index.html` for Rust API documentation. The sandboxed build uses pinned tools and vendored Cargo dependencies, checks doctests, and needs no model or runtime artifacts. Separate outputs are available as `.#book` and `.#rustdoc`.
+
+The flake CI workflow discovers and builds packages, checks, development shells, and formatters, then publishes the built site through GitHub Pages. See [publishing instructions](docs/book/development.md#combined-site-and-github-pages).
+
+### License
 
 Original Chakany Systems code is licensed under [MIT](LICENSE). Rampart-derived policy material, model and tokenizer are licensed under CC BY 4.0, credited to National Design Studio. See [`ATTRIBUTION.md`](ATTRIBUTION.md) and [`licenses/CC-BY-4.0.txt`](licenses/CC-BY-4.0.txt). Cargo metadata records `MIT AND CC-BY-4.0`; packages include both notices, Rust dependency notices and ONNX Runtime's license and third-party notices.
-
-The Git repository contains source, model revision and hashes. Fetch weights through the Nix build or the manual download recipe; local model and build directories and common weight-file formats are ignored.

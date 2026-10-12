@@ -2,7 +2,7 @@
 
 ## Nix builds
 
-The flake uses flake-parts for per-system outputs and Crane for Rust builds. `nix/cargo.nix` defines vendored dependencies and shared compilation artifacts for the package, rustdoc, and Clippy. Package-specific model and runtime paths are set in `nix/package.nix`.
+The flake uses flake-parts for per-system outputs and Crane for Rust builds. `nix/default.nix` defines packages, shared Cargo artifacts, documentation, checks, and development shells. `nix/runtime.nix` builds the reduced ONNX Runtime; `nix/dependencies.nix` pins its sources.
 
 CI builds natively on macOS ARM64, Linux ARM64, and Linux x86-64. It discovers targets from the flake outputs, including Rust formatting, Clippy, C ABI, and Common Lisp checks.
 

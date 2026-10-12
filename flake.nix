@@ -12,18 +12,38 @@
 
   outputs =
     inputs@{ self, flake-parts, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [
-        "aarch64-darwin"
-        "aarch64-linux"
-        "x86_64-linux"
-      ];
-
-      perSystem = import ./nix/per-system.nix { inherit (inputs) crane; };
-
-      flake.githubActions.matrix = import ./nix/ci-matrix.nix {
-        lib = inputs.nixpkgs.lib;
-        outputs = self;
+    let
+      lib = inputs.nixpkgs.lib;
+      runners = {
+        aarch64-darwin = "macos-15";
+        aarch64-linux = "ubuntu-24.04-arm";
+        x86_64-linux = "ubuntu-24.04";
       };
+      # Discover derivations recursively so new outputs need no workflow edits.
+      discover =
+        path: value:
+        if lib.isDerivation value then
+          [
+            {
+              attr = lib.concatStringsSep "." path;
+              system = builtins.elemAt path 1;
+            }
+          ]
+        else if builtins.isAttrs value then
+          lib.concatMap (name: discover (path ++ [ name ]) value.${name}) (builtins.attrNames value)
+        else
+          [ ];
+      builds = lib.groupBy (entry: entry.system) (
+        discover [ ] (lib.getAttrs [ "packages" "checks" "devShells" "formatter" ] self)
+      );
+    in
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = builtins.attrNames runners;
+      perSystem = import ./nix { inherit (inputs) crane; };
+      flake.githubActions.matrix.include = lib.mapAttrsToList (system: entries: {
+        inherit system;
+        runner = runners.${system};
+        attrs = map (entry: entry.attr) entries;
+      }) builds;
     };
 }
