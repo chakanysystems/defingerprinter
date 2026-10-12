@@ -4,7 +4,7 @@
 {{#include ../../examples/lisp.lisp}}
 ```
 
-Output: `Contact [EMAIL_1]`. `protect` returns the text and a status; `with-redactor` closes the context on exit.
+Output: `Contact [EMAIL_1]`. `redact` returns the text and a status; `with-redactor` closes the context on exit.
 
 ## Run
 

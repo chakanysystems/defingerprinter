@@ -16,13 +16,13 @@ int main(void) {
     const uint8_t input[] = "Contact alice@example.com";
     uint8_t output[DEFINGERPRINTER_OUTPUT_CAPACITY];
     size_t written;
-    status = defingerprinter_protect(handle,
+    status = defingerprinter_redact(handle,
         language, sizeof language - 1, input, sizeof input - 1,
         output, sizeof output, &written);
     defingerprinter_destroy(handle);
 
     if (status != DEFINGERPRINTER_OK) {
-        fprintf(stderr, "protect failed: %d\n", (int)status);
+        fprintf(stderr, "redact failed: %d\n", (int)status);
         return 1;
     }
     fwrite(output, 1, written, stdout);

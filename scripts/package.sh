@@ -35,7 +35,7 @@ cp "$ROOT/README.md" "$BUNDLE/README.md"
 for file in config.json tokenizer.json tokenizer_config.json onnx/model_q4.onnx; do cp "$MODEL/$file" "$BUNDLE/model/$file"; done
 sh scripts/collect-rust-licenses.sh "$BUNDLE/licenses"
 # Validate pinned model bytes and actual inference, using only bundle-relative files.
-printf '%s\n' '{"op":"protect","language":"en","text":"Contact zqx_75@example.com"}' | "$BUNDLE/defingerprinter" > target/native-bundle-smoke.jsonl
+printf '%s\n' '{"op":"redact","language":"en","text":"Contact zqx_75@example.com"}' | "$BUNDLE/defingerprinter" > target/native-bundle-smoke.jsonl
 jq -e -s 'length == 1 and .[0].ok == true and (.[0].text | contains("zqx_75") | not)' target/native-bundle-smoke.jsonl >/dev/null
 # SHA256SUMS is excluded from the input file list.
 # shellcheck disable=SC2094

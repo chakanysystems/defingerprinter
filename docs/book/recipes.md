@@ -7,7 +7,7 @@ Keep collection, redaction, and publication as separate steps. Fail closed at ea
 ```text
 context = create()
 summary = construct_short_diagnostic()
-result = protect(context, declared_language, summary)
+result = redact(context, declared_language, summary)
 close(context)
 if result succeeded:
     export(result.text)

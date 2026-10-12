@@ -1,7 +1,7 @@
 { lib, stdenv, rustPlatform, jq, model, runtime }:
 rustPlatform.buildRustPackage {
   pname = "defingerprinter";
-  version = "0.2.0";
+  version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

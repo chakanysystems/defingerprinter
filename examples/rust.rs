@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = env::var("DEFINGERPRINTER_RUNTIME")?;
     let mut redactor = Redactor::new(model.into(), runtime.into());
 
-    let text = redactor.protect("en", "Contact alice@example.com")?;
+    let text = redactor.redact("en", "Contact alice@example.com")?;
     println!("{text}");
     Ok(())
 }

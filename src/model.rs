@@ -90,7 +90,7 @@ impl Model {
             labels,
         })
     }
-    pub fn protect(&mut self, raw: &str) -> Result<String, RedactionError> {
+    pub fn redact(&mut self, raw: &str) -> Result<String, RedactionError> {
         let raw = policy::pre_redact(raw);
         let deterministic = policy::deterministic(&raw);
         let masked = policy::premask_mapped(&raw, &deterministic);

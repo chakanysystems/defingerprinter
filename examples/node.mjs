@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
 const request = {
-  op: 'protect', language: 'en', text: 'Contact alice@example.com',
+  op: 'redact', language: 'en', text: 'Contact alice@example.com',
 };
 const output = execFileSync(process.argv[2], [], {
   input: JSON.stringify(request) + '\n',

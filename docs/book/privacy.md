@@ -2,7 +2,7 @@
 
 ## Application policy
 
-Callers choose the authorization, export, and retention policy appropriate to their application. Create a redactor, protect the diagnostic, and consume only successful output.
+Callers choose the authorization, export, and retention policy appropriate to their application. Create a redactor, redact the diagnostic, and consume only successful output.
 
 ## Construct a small summary
 

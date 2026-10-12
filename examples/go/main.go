@@ -11,7 +11,7 @@ import (
 
 func main() {
 	request, err := json.Marshal(map[string]string{
-		"op": "protect", "language": "en", "text": "Contact alice@example.com",
+		"op": "redact", "language": "en", "text": "Contact alice@example.com",
 	})
 	if err != nil {
 		log.Fatal(err)

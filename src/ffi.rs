@@ -2,7 +2,7 @@
 //!
 //! Use the declarations in `include/defingerprinter.h` and check
 //! [`defingerprinter_abi_version`] before creating a context. Handles are opaque,
-//! monotonically allocated `u64` integers, not pointers. Create a handle, protect
+//! monotonically allocated `u64` integers, not pointers. Create a handle, redact
 //! text, then destroy the handle. No artifact loading occurs until an admitted
 //! request. Collection and privacy policy are the caller's responsibility.
 //!
@@ -135,7 +135,7 @@ pub extern "C" fn defingerprinter_abi_version() -> u32 {
 /// characters: the model directory and native runtime shared library. Lengths
 /// exclude any terminator. Pass NULL/0 for **both** paths to select
 /// [`engine::compiled_paths`]; missing defaults return [`Status::ArtifactError`].
-/// Paths are copied but files are not checked until protection is attempted.
+/// Paths are copied but files are not checked until redaction is attempted.
 /// `out_handle` is set to zero before processing and receives a nonzero handle
 /// only on success. Destroy that handle with [`defingerprinter_destroy`].
 ///
@@ -217,7 +217,7 @@ pub unsafe extern "C" fn defingerprinter_create(
 /// and `written` storage for each concurrent call. Do not access output while
 /// the call writes it. The library neither takes ownership nor frees buffers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn defingerprinter_protect(
+pub unsafe extern "C" fn defingerprinter_redact(
     handle: u64,
     language: *const u8,
     language_len: usize,
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn defingerprinter_protect(
             .redactor
             .as_mut()
             .ok_or(Status::InvalidHandle)?
-            .protect(language, input)
+            .redact(language, input)
             .map_err(Status::from)?;
         // The lock covers publication: destruction waits until output is complete.
         unsafe {
@@ -327,7 +327,7 @@ mod tests {
         let mut written = 9;
         assert_eq!(
             unsafe {
-                defingerprinter_protect(
+                defingerprinter_redact(
                     handle,
                     std::ptr::null(),
                     2,
@@ -376,7 +376,7 @@ mod tests {
         let handle = create();
         assert_eq!(
             unsafe {
-                defingerprinter_protect(
+                defingerprinter_redact(
                     handle,
                     std::ptr::null(),
                     2,
@@ -399,7 +399,7 @@ mod tests {
         for input in ["Αlice", "١٢٣٤٥٦٧٨٩", "Alice\0Johnson"] {
             assert_eq!(
                 unsafe {
-                    defingerprinter_protect(
+                    defingerprinter_redact(
                         handle,
                         b"en".as_ptr(),
                         2,
@@ -416,7 +416,7 @@ mod tests {
         }
         assert_eq!(
             unsafe {
-                defingerprinter_protect(
+                defingerprinter_redact(
                     handle,
                     b"en".as_ptr(),
                     2,

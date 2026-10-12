@@ -79,17 +79,17 @@ const structured = [
   ['unicode-structured', 'José García: jose@example.org; Émilie Dupont: emilie@example.net; URL https://private.example.org/account.'],
   ['repeated', 'Contact Alice Johnson at alice@example.org. Again alice@example.org.'],
 ];
-const protectCases = [];
+const redactCases = [];
 for (const [name, text] of structured) {
   const guard = new ChatGuard({ ner: text => detectNer(text, classifier) });
   const result = await guard.protect(text);
   // Compare the retained text and replacement labels, not per-session numeric IDs.
-  protectCases.push({ name, text, expected: result.text.replace(/\[([A-Z_]+)_\d+\]/g, '[$1]') });
+  redactCases.push({ name, text, expected: result.text.replace(/\[([A-Z_]+)_\d+\]/g, '[$1]') });
 }
 assert(cases.some(c => c.spans.length), 'reference model must detect contextual PII');
 const out = resolve(root, 'target/native-parity/reference.json');
 await mkdir(dirname(out), { recursive: true });
-await writeFile(out, JSON.stringify({ rampartVersion, transformersVersion, tokenizerCases, heuristicCases, cases, protectCases }));
+await writeFile(out, JSON.stringify({ rampartVersion, transformersVersion, tokenizerCases, heuristicCases, cases, redactCases }));
 let runtime = process.env.RAMPART_RUNTIME ?? (process.platform === 'darwin' && process.arch === 'arm64'
   ? resolve(root, 'target/native-runtime/package/libonnxruntime.dylib') : undefined);
 if (!runtime) {

@@ -5,7 +5,7 @@
 
 (defingerprinter:with-redactor (redactor)
   (multiple-value-bind (text status)
-      (defingerprinter:protect redactor "Contact alice@example.com" :language "en")
+      (defingerprinter:redact redactor "Contact alice@example.com" :language "en")
     (unless (eq status :ok)
-      (error "protect failed: ~A" status))
+      (error "redact failed: ~A" status))
     (write-line text)))

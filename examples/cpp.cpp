@@ -18,14 +18,14 @@ int main() {
     const std::string input = "Contact alice@example.com";
     std::array<uint8_t, DEFINGERPRINTER_OUTPUT_CAPACITY> output;
     size_t written;
-    status = defingerprinter_protect(handle,
+    status = defingerprinter_redact(handle,
         reinterpret_cast<const uint8_t*>(language.data()), language.size(),
         reinterpret_cast<const uint8_t*>(input.data()), input.size(),
         output.data(), output.size(), &written);
     defingerprinter_destroy(handle);
 
     if (status != DEFINGERPRINTER_OK) {
-        std::cerr << "protect failed: " << status << '\n';
+        std::cerr << "redact failed: " << status << '\n';
         return 1;
     }
     std::cout << std::string(reinterpret_cast<const char*>(output.data()), written) << '\n';

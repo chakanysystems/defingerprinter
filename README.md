@@ -50,18 +50,18 @@ Install the ASDF sources with CFFI, Babel and Bordeaux-Threads. Load the shared 
 (defingerprinter:load-library "/absolute/store/output/lib/libdefingerprinter.dylib")
 (defingerprinter:with-redactor (context)
   (multiple-value-bind (text status)
-      (defingerprinter:protect context "Contact zqx_75@example.com" :language "en")
+      (defingerprinter:redact context "Contact zqx_75@example.com" :language "en")
     (when (eq status :ok)
       (write-line text))))
 ```
 
-Contexts initialize the model lazily on the first valid protection call. `protect` returns a redacted string and `:ok`, or `nil` and a static status. Closure drops the session and waits for in-flight protection, including Lisp decoding. Use `with-redactor` or explicitly call `close-redactor`; there is no GC finalizer. Setup failures signal `setup-error` with a static status and a `retry` restart.
+Contexts initialize the model lazily on the first valid redaction call. `redact` returns a redacted string and `:ok`, or `nil` and a static status. Closure drops the session and waits for in-flight redaction, including Lisp decoding. Use `with-redactor` or explicitly call `close-redactor`; there is no GC finalizer. Setup failures signal `setup-error` with a static status and a `retry` restart.
 
 For a non-Nix build, provide both absolute `:model-directory` and `:runtime-library` paths to `make-redactor`. Load one shared library and one ONNX Runtime path per process. Restart the process to change the runtime.
 
 ## C ABI
 
-Release 0.2.0 uses the version-2 contract in [`include/defingerprinter.h`](include/defingerprinter.h). Check `defingerprinter_abi_version`, create an integer handle, protect UTF-8 slices into caller-owned storage, then destroy it. Pass `NULL,0` for both artifact paths to use Nix defaults. No allocator ownership crosses the boundary; output is not NUL-terminated. Ignore output on any nonzero status.
+Release 0.1.0 uses the version-2 contract in [`include/defingerprinter.h`](include/defingerprinter.h). Check `defingerprinter_abi_version`, create an integer handle, redact UTF-8 slices into caller-owned storage, then destroy it. Pass `NULL,0` for both artifact paths to use Nix defaults. No allocator ownership crosses the boundary; output is not NUL-terminated. Ignore output on any nonzero status.
 
 Calls serialize per handle. Destruction drops the session and waits for in-flight work. Concurrent calls require distinct output and length storage. Destroyed handles are invalid. Keep the library loaded until all handles and calls finish. Version 2 permits compatible replacements on the same platform and architecture; future incompatible ABI changes require a different version. Status value 3 is reserved; all other status values retain their numbering. Model behavior is separately pinned, not an ABI guarantee.
 
@@ -80,7 +80,7 @@ Inference uses one CPU thread with spinning, graph optimization and runtime tele
 The optional `defingerprinter` executable accepts sequential UTF-8 JSONL requests:
 
 ```json
-{"op":"protect","language":"en","text":"Contact zqx_75@example.com"}
+{"op":"redact","language":"en","text":"Contact zqx_75@example.com"}
 {"op":"status"}
 ```
 

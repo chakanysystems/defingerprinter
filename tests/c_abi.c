@@ -6,12 +6,12 @@
 #include <string.h>
 
 static defingerprinter_handle handle;
-static void *protect_in_thread(void *unused) {
+static void *redact_in_thread(void *unused) {
     (void)unused;
     const char *input = "Contact Alice Johnson at zqx_75@example.com";
     uint8_t output[DEFINGERPRINTER_OUTPUT_CAPACITY + 1];
     size_t written = 99;
-    int32_t status = defingerprinter_protect(handle, (const uint8_t *)"en", 2,
+    int32_t status = defingerprinter_redact(handle, (const uint8_t *)"en", 2,
         (const uint8_t *)input, strlen(input), output, sizeof(output), &written);
     assert(status == DEFINGERPRINTER_OK || status == DEFINGERPRINTER_INVALID_HANDLE);
     if (status == DEFINGERPRINTER_OK) {
@@ -33,25 +33,25 @@ int main(int argc, char **argv) {
     assert(status == DEFINGERPRINTER_OK && handle != 0);
     size_t written = 99;
     /* Creation is lazy; direct calls validate pointers and bounds. */
-    assert(defingerprinter_protect(handle, NULL, 2, NULL, 100, NULL, 0, NULL) == DEFINGERPRINTER_INVALID_ARGUMENT);
+    assert(defingerprinter_redact(handle, NULL, 2, NULL, 100, NULL, 0, NULL) == DEFINGERPRINTER_INVALID_ARGUMENT);
     uint8_t output[DEFINGERPRINTER_OUTPUT_CAPACITY + 1];
-    assert(defingerprinter_protect(handle, (const uint8_t *)"en", 2, (const uint8_t *)"Alice", 5,
+    assert(defingerprinter_redact(handle, (const uint8_t *)"en", 2, (const uint8_t *)"Alice", 5,
         output, 1, &written) == DEFINGERPRINTER_BUFFER_TOO_SMALL);
     assert(written == 0);
     const uint8_t invalid_utf8[] = {0xff};
-    assert(defingerprinter_protect(handle, (const uint8_t *)"en", 2, invalid_utf8, 1,
+    assert(defingerprinter_redact(handle, (const uint8_t *)"en", 2, invalid_utf8, 1,
         output, sizeof(output), &written) == DEFINGERPRINTER_UNSUPPORTED_INPUT);
     assert(written == 0);
     const char *unsupported = "١٢٣٤٥٦٧٨٩";
-    assert(defingerprinter_protect(handle, (const uint8_t *)"en", 2, (const uint8_t *)unsupported, strlen(unsupported),
+    assert(defingerprinter_redact(handle, (const uint8_t *)"en", 2, (const uint8_t *)unsupported, strlen(unsupported),
         output, sizeof(output), &written) == DEFINGERPRINTER_UNSUPPORTED_INPUT);
-    protect_in_thread(NULL);
+    redact_in_thread(NULL);
     pthread_t threads[4];
-    for (size_t i = 0; i < 4; ++i) assert(pthread_create(&threads[i], NULL, protect_in_thread, NULL) == 0);
+    for (size_t i = 0; i < 4; ++i) assert(pthread_create(&threads[i], NULL, redact_in_thread, NULL) == 0);
     assert(defingerprinter_destroy(handle) == DEFINGERPRINTER_OK);
     for (size_t i = 0; i < 4; ++i) assert(pthread_join(threads[i], NULL) == 0);
     assert(defingerprinter_destroy(handle) == DEFINGERPRINTER_INVALID_HANDLE);
-    assert(defingerprinter_protect(handle, NULL, 2, NULL, 100, NULL, 0, &written) == DEFINGERPRINTER_INVALID_HANDLE);
+    assert(defingerprinter_redact(handle, NULL, 2, NULL, 100, NULL, 0, &written) == DEFINGERPRINTER_INVALID_HANDLE);
     assert(written == 0);
     puts("Defingerprinter C ABI: direct redaction, UTF-8, concurrent destruction and lifetime checks passed");
     return 0;

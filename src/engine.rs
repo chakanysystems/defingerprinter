@@ -25,8 +25,8 @@ pub const OUTPUT_CAPACITY: usize = MAX_OUTPUT_CHARS * 4;
 /// ```
 /// use defingerprinter::{engine::Redactor, RedactionError};
 /// let mut redactor = Redactor::new("/missing/model".into(), "/missing/runtime".into());
-/// assert!(matches!(redactor.protect("EN", "Synthetic text"), Err(RedactionError::Input)));
-/// assert!(matches!(redactor.protect("en", "Synthetic text"), Err(RedactionError::Artifact)));
+/// assert!(matches!(redactor.redact("EN", "Synthetic text"), Err(RedactionError::Input)));
+/// assert!(matches!(redactor.redact("en", "Synthetic text"), Err(RedactionError::Artifact)));
 /// ```
 pub struct Redactor {
     model: Option<Model>,
@@ -39,7 +39,7 @@ impl Redactor {
     /// Construction never reads artifacts or starts inference. The paths are
     /// stored without validation; use absolute paths for predictable deployment.
     /// Artifact and runtime errors are reported by the first supported
-    /// [`protect`](Self::protect) call. All instances in one process
+    /// [`redact`](Self::redact) call. All instances in one process
     /// must use the same compatible ONNX Runtime.
     pub fn new(directory: PathBuf, runtime: PathBuf) -> Self {
         Self {
@@ -61,7 +61,7 @@ impl Redactor {
     /// [`RedactionError::Inference`] or [`RedactionError::Input`]. Loading and
     /// model-processing failures discard the cached session. Errors do not return
     /// source text: withhold the diagnostic rather than falling back to the original.
-    pub fn protect(&mut self, language: &str, text: &str) -> Result<String, RedactionError> {
+    pub fn redact(&mut self, language: &str, text: &str) -> Result<String, RedactionError> {
         if !supported(language, text) {
             return Err(RedactionError::Input);
         }
@@ -72,7 +72,7 @@ impl Redactor {
             self.model
                 .as_mut()
                 .ok_or(RedactionError::Runtime)?
-                .protect(text)
+                .redact(text)
         })();
         match result {
             Ok(text) => Ok(text.chars().take(MAX_OUTPUT_CHARS).collect()),
@@ -151,14 +151,14 @@ mod tests {
         assert!(redactor.model.is_none());
         for text in ["Αlice", "Alice\0Johnson"] {
             assert!(matches!(
-                redactor.protect("en", text),
+                redactor.redact("en", text),
                 Err(RedactionError::Input)
             ));
             assert!(redactor.model.is_none());
         }
         for _ in 0..2 {
             assert!(matches!(
-                redactor.protect("en", "Synthetic text"),
+                redactor.redact("en", "Synthetic text"),
                 Err(RedactionError::Artifact)
             ));
             assert!(redactor.model.is_none());

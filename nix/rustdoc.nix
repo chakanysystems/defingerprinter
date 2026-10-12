@@ -1,7 +1,7 @@
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
   pname = "defingerprinter-rustdoc";
-  version = "0.2.0";
+  version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [

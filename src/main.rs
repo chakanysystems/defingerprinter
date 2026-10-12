@@ -16,7 +16,7 @@ const MAX_LINE: usize = 32768;
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
-    Protect { language: String, text: String },
+    Redact { language: String, text: String },
     Status,
     Benchmark { iterations: usize },
 }
@@ -31,11 +31,11 @@ impl State {
             Request::Status => {
                 json!({"ok":true,"ready":self.model.is_some()})
             }
-            Request::Protect { language, text } => {
+            Request::Redact { language, text } => {
                 if !supported(&language, &text) {
                     return dropped("unsupported_input");
                 }
-                let result = self.ready().and_then(|model| model.protect(&text));
+                let result = self.ready().and_then(|model| model.redact(&text));
                 match result {
                     Ok(text) => {
                         json!({"ok":true,"text":text.chars().take(1024).collect::<String>()})
@@ -68,11 +68,11 @@ impl State {
         let model = self.ready()?;
         let load_ms = start.elapsed().as_secs_f64() * 1000.0;
         let text = "The repair failed while processing Alice Johnson's report at 123 Main Street, Boston. Contact alice@example.com or 212-555-0199. The tool used /Users/alice/project and token=sk-synthetic-secret-value.";
-        model.protect(text)?;
+        model.redact(text)?;
         let mut durations = Vec::new();
         for _ in 0..iterations {
             let start = Instant::now();
-            model.protect(text)?;
+            model.redact(text)?;
             durations.push(start.elapsed().as_secs_f64() * 1000.0);
         }
         durations.sort_by(f64::total_cmp);
@@ -167,7 +167,7 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
-    fn direct_protection_loads_lazily_and_failure_resets_session() {
+    fn direct_redaction_loads_lazily_and_failure_resets_session() {
         let mut s = State {
             model: None,
             directory: "missing".into(),
@@ -175,7 +175,7 @@ mod tests {
         };
         assert_eq!(s.handle(Request::Status), json!({"ok":true,"ready":false}));
         assert_eq!(
-            s.handle(Request::Protect {
+            s.handle(Request::Redact {
                 language: "en".into(),
                 text: "Alice".into()
             })["reason"],
@@ -210,7 +210,7 @@ mod tests {
             "Alice\u{093e}",
         ] {
             assert_eq!(
-                s.handle(Request::Protect {
+                s.handle(Request::Redact {
                     language: "en".into(),
                     text: text.into()
                 })["reason"],

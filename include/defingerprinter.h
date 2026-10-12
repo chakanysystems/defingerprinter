@@ -31,7 +31,7 @@ uint32_t defingerprinter_abi_version(void);
    out_handle must be writable. It is zero on error. */
 int32_t defingerprinter_create(const uint8_t *model_dir, size_t model_dir_len,
     const uint8_t *runtime, size_t runtime_len, defingerprinter_handle *out_handle);
-/* Lifecycle: create, protect, destroy. Collection, retention and privacy policy
+/* Lifecycle: create, redact, destroy. Collection, retention and privacy policy
    are the caller's responsibility. */
 /* UTF-8 slices. Language is en/es/fr/de/it/pt/nl. Caller owns the output buffer
    (>=OUTPUT_CAPACITY bytes) and written. Output is NOT NUL-terminated.
@@ -41,7 +41,7 @@ int32_t defingerprinter_create(const uint8_t *model_dir, size_t model_dir_len,
    length, and written must be valid and disjoint from the slices. Each concurrent
    call must use distinct output and written storage. Model execution/publication
    are serialized per handle; different handles can run concurrently. */
-int32_t defingerprinter_protect(defingerprinter_handle handle,
+int32_t defingerprinter_redact(defingerprinter_handle handle,
     const uint8_t *language, size_t language_len, const uint8_t *input, size_t input_len,
     uint8_t *output, size_t output_capacity, size_t *written);
 /* Safe for concurrent callers. Stale and duplicate handles return INVALID_HANDLE.

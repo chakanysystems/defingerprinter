@@ -7,7 +7,7 @@
 //! # Deployment and lifecycle
 //!
 //! Construction does not read artifacts or load ONNX Runtime. Call
-//! [`engine::Redactor::protect`] directly: the first supported request verifies
+//! [`engine::Redactor::redact`] directly: the first supported request verifies
 //! the pinned model files and starts a local CPU session. Subsequent requests
 //! reuse that session. Dropping the redactor releases the model session.
 //! The application owns collection, retention, and privacy policy.
@@ -31,7 +31,7 @@
 //!     PathBuf::from("/absolute/path/to/model"),
 //!     PathBuf::from("/absolute/path/to/libonnxruntime.so"),
 //! );
-//! let result = redactor.protect("en", "Synthetic contact: alice@example.com");
+//! let result = redactor.redact("en", "Synthetic contact: alice@example.com");
 //! match result {
 //!     Ok(sanitized) => println!("{sanitized}"),
 //!     Err(error) => eprintln!("Diagnostic withheld: {error}"),
@@ -61,7 +61,7 @@ pub mod tokenizer;
 
 /// Failure category returned by the Rust redaction pipeline.
 ///
-/// Errors carry no diagnostic text. [`engine::Redactor::protect`] drops its
+/// Errors carry no diagnostic text. [`engine::Redactor::redact`] drops its
 /// cached session after a loading or model-processing failure, so a later
 /// supported request can retry loading.
 #[derive(Debug)]

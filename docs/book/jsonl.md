@@ -1,13 +1,13 @@
 # Any language: JSONL
 
-Run the `defingerprinter` executable and exchange one UTF-8 JSON object per line. It reads sequentially from stdin and flushes one response per request to stdout. The model loads lazily on the first valid protection call.
+Run the `defingerprinter` executable and exchange one UTF-8 JSON object per line. It reads sequentially from stdin and flushes one response per request to stdout. The model loads lazily on the first valid redaction call.
 
 ## Requests
 
 | Operation | Request | Successful response |
 | --- | --- | --- |
-| Protect | `{"op":"protect","language":"en","text":"synthetic diagnostic"}` | `{"ok":true,"text":"redacted diagnostic"}` |
-| Inspect | `{"op":"status"}` | `{"ok":true,"ready":false}` before loading; `{"ok":true,"ready":true}` after successful protection |
+| Redact | `{"op":"redact","language":"en","text":"synthetic diagnostic"}` | `{"ok":true,"text":"redacted diagnostic"}` |
+| Inspect | `{"op":"status"}` | `{"ok":true,"ready":false}` before loading; `{"ok":true,"ready":true}` after successful redaction |
 | Benchmark | `{"op":"benchmark","iterations":100}` | Timing fields with `ok:true` |
 
 `status` reports whether a model session is loaded. It does not initialize the model. Benchmarking accepts 1 through 1,000 iterations and measures a fixed synthetic diagnostic. Its fields include `iterations`, `input_chars`, `load_ms`, `median_ms`, and `p95_ms`; it is a local development operation rather than ordinary diagnostic export.
@@ -20,7 +20,7 @@ Request objects reject unknown fields and invalid types. Use JSON serialization,
 {"ok":false,"dropped":true,"reason":"unsupported_input"}
 ```
 
-Reasons include `unsupported_input`, `redaction_failed`, and `invalid_request`. They are static categories, not the original input. Accept diagnostic output only from a valid protection response with `ok:true` and a string `text`.
+Reasons include `unsupported_input`, `redaction_failed`, and `invalid_request`. They are static categories, not the original input. Accept diagnostic output only from a valid redaction response with `ok:true` and a string `text`.
 
 ## Supervision checklist
 

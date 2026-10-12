@@ -35,7 +35,7 @@ Pin the actual revision in your consumer lockfile. `trunk` is this repository's 
 
 ## Compatibility
 
-Library release 0.2.0 uses ABI 2. Version 2 permits compatible shared-library replacements on the same platform and architecture. Check `defingerprinter_abi_version()` before creating contexts. Incompatible future ABIs require a new version. Model and redaction-policy behavior are separately pinned.
+Library release 0.1.0 uses ABI 2. Version 2 permits compatible shared-library replacements on the same platform and architecture. Check `defingerprinter_abi_version()` before creating contexts. Incompatible future ABIs require a new version. Model and redaction-policy behavior are separately pinned.
 
 The flake exposes `default`, `defingerprinter`, `model`, `runtime`, and `book` packages for `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`. Darwin arm64 is locally tested; validate Linux targets natively. The pinned Nix Darwin runtime requires macOS 14 according to the selected SDK/toolchain.
 

@@ -142,23 +142,23 @@ fn pinned_reference_parity() {
         }
     }
     let placeholder = regex::Regex::new(r"\[([A-Z_]+)_\d+\]").unwrap();
-    for case in fixture["protectCases"].as_array().unwrap() {
+    for case in fixture["redactCases"].as_array().unwrap() {
         let text = case["text"].as_str().unwrap();
-        let safe = model.protect(text).unwrap();
+        let safe = model.redact(text).unwrap();
         let normalized = placeholder.replace_all(&safe, "[$1]");
         if normalized != case["expected"].as_str().unwrap() {
             failures.push(format!(
-                "protect {}: native={normalized} reference={}",
+                "redact {}: native={normalized} reference={}",
                 case["name"], case["expected"]
             ));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     println!(
-        "Pinned parity: {} tokenizer, {} heuristic, {} NER (5 long seams, 1 explicit rejected-controls divergence), {} structured protect cases passed",
+        "Pinned parity: {} tokenizer, {} heuristic, {} NER (5 long seams, 1 explicit rejected-controls divergence), {} structured redact cases passed",
         fixture["tokenizerCases"].as_array().unwrap().len(),
         fixture["heuristicCases"].as_array().unwrap().len(),
         fixture["cases"].as_array().unwrap().len(),
-        fixture["protectCases"].as_array().unwrap().len()
+        fixture["redactCases"].as_array().unwrap().len()
     );
 }

@@ -60,20 +60,20 @@ fn records(values: &[Value]) -> Vec<Vec<u8>> {
         .map(|v| serde_json::to_vec(v).unwrap())
         .collect()
 }
-fn protect(language: &str, text: &str) -> Value {
-    json!({"op":"protect","language":language,"text":text})
+fn redact(language: &str, text: &str) -> Value {
+    json!({"op":"redact","language":language,"text":text})
 }
 
 #[test]
 fn lazy_loading_failure_and_admission() {
     let requests = records(&[
         json!({"op":"status"}),
-        protect("ru", "private-fixture@example.org"),
-        protect("en", "Αlice private-fixture@example.org"),
-        protect("en", "private\0fixture"),
-        protect("en", &"a".repeat(4097)),
+        redact("ru", "private-fixture@example.org"),
+        redact("en", "Αlice private-fixture@example.org"),
+        redact("en", "private\0fixture"),
+        redact("en", &"a".repeat(4097)),
         json!({"op":"status"}),
-        protect("en", "private-fixture@example.org"),
+        redact("en", "private-fixture@example.org"),
         json!({"op":"status"}),
         json!({"op":"benchmark","iterations":1}),
         json!({"op":"status"}),
@@ -103,7 +103,7 @@ fn rejected_record_draining_and_eof() {
     ];
     input.extend(records(&[
         json!({"op":"status"}),
-        json!({"op":"protect","language":"en","text":"private-fixture","extra":true}),
+        json!({"op":"redact","language":"en","text":"private-fixture","extra":true}),
         json!({"op":"status"}),
     ]));
     let responses = exchange(&input, false);
@@ -127,11 +127,11 @@ fn actual_model_redacts_and_initializes_lazily() {
     let responses = exchange(
         &records(&[
             json!({"op":"status"}),
-            protect("ru", text),
+            redact("ru", text),
             json!({"op":"status"}),
-            protect("en", text),
+            redact("en", text),
             json!({"op":"status"}),
-            protect("en", text),
+            redact("en", text),
             json!({"op":"status"}),
         ]),
         true,
@@ -171,7 +171,7 @@ fn unsupported_script_digits_and_symbols() {
         "name Аlice",
         "symbol א",
     ];
-    let input: Vec<_> = cases.iter().map(|text| protect("en", text)).collect();
+    let input: Vec<_> = cases.iter().map(|text| redact("en", text)).collect();
     let responses = exchange(&records(&input), false);
     for response in &responses {
         assert_eq!(response["reason"], "unsupported_input");
@@ -195,7 +195,7 @@ fn actual_model_consumes_complete_credentials_and_identifiers() {
             "opaque [OPAQUE]",
         ),
     ];
-    let input: Vec<_> = cases.iter().map(|(text, _)| protect("en", text)).collect();
+    let input: Vec<_> = cases.iter().map(|(text, _)| redact("en", text)).collect();
     let responses = exchange(&records(&input), true);
     for (response, (text, expected)) in responses.iter().zip(cases) {
         assert_eq!(response["ok"], true, "{text}");
@@ -210,9 +210,9 @@ fn actual_model_output_bound_and_session_reuse() {
     let responses = exchange(
         &records(&[
             json!({"op":"status"}),
-            protect("en", &text),
+            redact("en", &text),
             json!({"op":"status"}),
-            protect("en", "Contact José García at jose@example.org."),
+            redact("en", "Contact José García at jose@example.org."),
             json!({"op":"status"}),
         ]),
         true,

@@ -34,7 +34,7 @@ The engine clears its model session after model failures. A later valid call can
 
 ## Common Lisp
 
-`protect` returns `nil` and a static status on failure. Use its second value, not truthiness of a guessed result. Setup errors are conditions with a static status and a `retry` restart. Correct setup before invoking the restart; close contexts deterministically.
+`redact` returns `nil` and a static status on failure. Use its second value, not truthiness of a guessed result. Setup errors are conditions with a static status and a `retry` restart. Correct setup before invoking the restart; close contexts deterministically.
 
 ## JSONL
 

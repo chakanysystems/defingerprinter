@@ -1,6 +1,6 @@
 (defpackage #:defingerprinter
   (:use #:cl)
-  (:export #:load-library #:make-redactor #:protect
+  (:export #:load-library #:make-redactor #:redact
            #:close-redactor #:with-redactor #:redactor
            #:setup-error #:setup-error-status))
 (in-package #:defingerprinter)
@@ -116,16 +116,16 @@ Explicit paths must be absolute; model initialization is lazy."
             (error () (setup-failure :artifact-error))))
       (retry () :report "Retry Defingerprinter context setup."))))
 
-(defun protect-native (context text language)
+(defun redact-native (context text language)
   (unless (and (stringp text) (stringp language))
-    (return-from protect-native (values nil :invalid-argument)))
+    (return-from redact-native (values nil :invalid-argument)))
   (unless (and (<= (length text) 16384)
                (member language '("en" "es" "fr" "de" "it" "pt" "nl") :test #'string=))
-    (return-from protect-native (values nil :unsupported-input)))
+    (return-from redact-native (values nil :unsupported-input)))
   (let ((input (babel:string-to-octets text :encoding :utf-8))
         (language-bytes (babel:string-to-octets language :encoding :utf-8)))
     (when (> (length input) 16384)
-      (return-from protect-native (values nil :unsupported-input)))
+      (return-from redact-native (values nil :unsupported-input)))
     (cffi:with-pointer-to-vector-data (input-pointer input)
       (cffi:with-pointer-to-vector-data (language-pointer language-bytes)
         (cffi:with-foreign-objects ((output :uint8 4096) (written :size))
@@ -133,26 +133,26 @@ Explicit paths must be absolute; model initialization is lazy."
           (let ((status
                   (status-keyword
                    (cffi:foreign-funcall-pointer
-                    (native-symbol "defingerprinter_protect") ()
+                    (native-symbol "defingerprinter_redact") ()
                     :uint64 (redactor-handle context)
                     :pointer language-pointer :size (length language-bytes)
                     :pointer input-pointer :size (length input)
                     :pointer output :size 4096 :pointer written :int32))))
-            (unless (eq status :ok) (return-from protect-native (values nil status)))
+            (unless (eq status :ok) (return-from redact-native (values nil status)))
             (let ((length (cffi:mem-ref written :size)))
               (unless (<= length 4096)
-                (return-from protect-native (values nil :internal-error)))
+                (return-from redact-native (values nil :internal-error)))
               (let ((bytes (make-array length :element-type '(unsigned-byte 8))))
                 (dotimes (index length)
                   (setf (aref bytes index) (cffi:mem-aref output :uint8 index)))
                 (values (babel:octets-to-string bytes :encoding :utf-8 :errorp t) :ok)))))))))
 
-(defun protect (context text &key (language "en"))
+(defun redact (context text &key (language "en"))
   "Return the safe string and :OK, or NIL and a failure status.
 The context lock covers inference and output decoding. No raw-text conditions escape."
   (bt:with-lock-held ((redactor-lock context))
-    (unless (redactor-handle context) (return-from protect (values nil :invalid-handle)))
-    (handler-case (protect-native context text language)
+    (unless (redactor-handle context) (return-from redact (values nil :invalid-handle)))
+    (handler-case (redact-native context text language)
       (error () (values nil :internal-error)))))
 
 (defun close-redactor (context)

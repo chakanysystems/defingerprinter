@@ -19,7 +19,7 @@ The native examples close their sessions before printing successful output. The 
 
 ## The lifecycle, in one line
 
-**Create → protect → close → export only success.**
+**Create → redact → close → export only success.**
 
 On a redaction failure, omit the diagnostic summary. Redaction is probabilistic and does not guarantee anonymity. See [the integration contract](contract.md) and [privacy and integration responsibilities](privacy.md).
 

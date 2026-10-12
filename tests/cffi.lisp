@@ -8,7 +8,7 @@
 
 (defun check-status (context text expected &key (language "en"))
   (multiple-value-bind (safe status)
-      (defingerprinter:protect context text :language language)
+      (defingerprinter:redact context text :language language)
     (check (eq status expected))
     (unless (eq status :ok) (check (null safe)))
     safe))
@@ -48,7 +48,7 @@ omit both to exercise the compiled Nix defaults."
       (check (= 2 (cffi:foreign-funcall-pointer
                    (defingerprinter::native-symbol "defingerprinter_destroy") ()
                    :uint64 *failed-native-handle* :int32))))
-    ;; A new context accepts protection immediately, without eager model setup.
+    ;; A new context accepts redaction immediately, without eager model setup.
     (let ((context (apply #'defingerprinter:make-redactor options)))
       (unwind-protect
            (progn
@@ -63,13 +63,13 @@ omit both to exercise the compiled Nix defaults."
              (check-status context "hello" :unsupported-input :language "zz")
              (check-status context (make-string 16385 :initial-element #\a) :unsupported-input)
              (check-status context 42 :invalid-argument)
-             ;; Concurrent protect/close serializes through output decoding too.
+             ;; Concurrent redact/close serializes through output decoding too.
              (let ((thread (bt:make-thread
                             (lambda ()
                               (dotimes (index 10)
                                 (declare (ignorable index))
                                 (multiple-value-bind (safe status)
-                                    (defingerprinter:protect context "alice@example.com")
+                                    (defingerprinter:redact context "alice@example.com")
                                   (check (member status '(:ok :invalid-handle)))
                                   (when (eq status :invalid-handle) (check (null safe)))))))))
                (check (eq :ok (defingerprinter:close-redactor context)))

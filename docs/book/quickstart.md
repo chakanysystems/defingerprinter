@@ -5,7 +5,7 @@ From the repository root:
 ```sh
 nix build .#default
 PREFIX=$(cd result && pwd -P)
-printf '%s\n' '{"op":"protect","language":"en","text":"Contact alice@example.com"}' \
+printf '%s\n' '{"op":"redact","language":"en","text":"Contact alice@example.com"}' \
   | "$PREFIX/bin/defingerprinter"
 ```
 

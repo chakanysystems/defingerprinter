@@ -10,11 +10,11 @@ lib.defingerprinter_create.argtypes = [
     c.c_char_p, c.c_size_t, c.c_char_p, c.c_size_t, c.POINTER(Handle)
 ]
 lib.defingerprinter_create.restype = c.c_int32
-lib.defingerprinter_protect.argtypes = [
+lib.defingerprinter_redact.argtypes = [
     Handle, c.c_char_p, c.c_size_t, c.c_char_p, c.c_size_t,
     c.c_void_p, c.c_size_t, c.POINTER(c.c_size_t)
 ]
-lib.defingerprinter_protect.restype = c.c_int32
+lib.defingerprinter_redact.restype = c.c_int32
 lib.defingerprinter_destroy.argtypes = [Handle]
 lib.defingerprinter_destroy.restype = c.c_int32
 
@@ -24,7 +24,7 @@ def check(status):
         raise RuntimeError(f"Defingerprinter status {status}")
 
 
-# Create, protect, destroy.
+# Create, redact, destroy.
 if lib.defingerprinter_abi_version() != 2:
     raise RuntimeError("Expected Defingerprinter ABI 2")
 handle = Handle()
@@ -34,7 +34,7 @@ try:
     text = "Contact alice@example.com".encode("utf-8")
     output = c.create_string_buffer(4096)
     written = c.c_size_t()
-    check(lib.defingerprinter_protect(
+    check(lib.defingerprinter_redact(
         handle, language, len(language), text, len(text),
         output, len(output), c.byref(written)
     ))

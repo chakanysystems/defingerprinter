@@ -21,9 +21,9 @@ The output limit truncates the redacted result; design summaries short enough to
 
 ## Lifetime
 
-Creation does not load model files. The first valid protection call loads and verifies artifacts lazily. Close every context deterministically to drop its model session.
+Creation does not load model files. The first valid redaction call loads and verifies artifacts lazily. Close every context deterministically to drop its model session.
 
-The C ABI serializes protection and destruction per handle. Destruction waits for in-flight work. Each concurrent call needs its own output buffer and length storage. Use separate handles for concurrent inference. Keep the shared library loaded until every live handle and call finishes.
+The C ABI serializes redaction and destruction per handle. Destruction waits for in-flight work. Each concurrent call needs its own output buffer and length storage. Use separate handles for concurrent inference. Keep the shared library loaded until every live handle and call finishes.
 
 Rust callers own a mutable `Redactor` and arrange their own synchronization. Common Lisp bindings hold their context lock through decoding, so closure waits for that work too.
 
