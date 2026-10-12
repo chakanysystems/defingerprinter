@@ -11,7 +11,7 @@ export CARGO_TARGET_DIR="$PWD/target/site-cargo"
 mdbook build --dest-dir "$staging"
 RUSTDOCFLAGS="${RUSTDOCFLAGS:-} -D warnings" cargo doc --locked --no-deps --lib
 cargo test --locked --doc
-mkdir "$staging/api"
+mkdir -p "$staging/api"
 cp -R "$CARGO_TARGET_DIR/doc/." "$staging/api/"
 cp docs/api-index.html "$staging/api/index.html"
 touch "$staging/.nojekyll"

@@ -11,6 +11,7 @@
 # Pick your language
 
 - [Rust](rust.md)
+  - [API reference](api/defingerprinter/index.md)
 - [C](c.md)
 - [C++](cpp.md)
 - [Python](python.md)

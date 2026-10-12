@@ -27,4 +27,4 @@ On a redaction failure, omit the diagnostic summary. Redaction is probabilistic 
 
 The model artifacts and runtime sources are pinned by the Nix build. The shared-library ABI is independently versioned. ABI compatibility does not promise identical redaction output across model or policy revisions. Preserve the complete Nix closure when deploying.
 
-The handbook is built with mdBook; Rust API documentation is generated separately with rustdoc. Both are built from this checkout, without publishing anything to a hosting service.
+The handbook is built with mdBook. Browse the [Rust API reference](api/defingerprinter/index.html) for generated rustdoc.

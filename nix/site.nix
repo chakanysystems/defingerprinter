@@ -9,6 +9,8 @@ in
 runCommand "defingerprinter-site" { } ''
   mkdir -p "$out/api"
   cp -R ${projectBook}/. "$out/"
+  # Replace the handbook's API navigation page with generated rustdoc.
+  chmod -R u+w "$out/api"
   cp -R ${rustdoc}/. "$out/api/"
   cp ${../docs/api-index.html} "$out/api/index.html"
   touch "$out/.nojekyll"

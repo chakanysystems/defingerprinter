@@ -6,7 +6,7 @@
 nix build .#site --out-link result-site
 ```
 
-Open `result-site/index.html` for the handbook and `result-site/api/defingerprinter/index.html` for Rust API documentation. The flake builds both in the sandbox with pinned tools and vendored Cargo dependencies, treats rustdoc warnings as errors, and checks doctests. Documentation builds need no model or ONNX Runtime artifacts.
+Open `result-site/index.html` for the handbook and the [Rust API reference](api/defingerprinter/index.html) for Rust documentation. The flake builds both in the sandbox with pinned tools and vendored Cargo dependencies, treats rustdoc warnings as errors, and checks doctests. Documentation builds need no model or ONNX Runtime artifacts.
 
 The site is configured for `https://chakanysystems.github.io/defingerprinter/`, including 404 assets under the project subdirectory. The flake CI workflow discovers packages, checks, and development shells from the flake outputs and builds them on native runners. After all build jobs pass, it publishes the built `site` output through GitHub Pages on pushes to `trunk` or a manual run.
 
@@ -29,7 +29,7 @@ For a local editing server:
 nix develop .#docs -c mdbook serve --hostname 127.0.0.1 --port 3000
 ```
 
-Rustdoc covers public APIs and compiles its examples. Inference examples use `no_run` because execution requires model artifacts and runtime paths.
+The [Rust API reference](api/defingerprinter/index.html) covers public APIs and compiles its examples. Inference examples use `no_run` because execution requires model artifacts and runtime paths.
 
 ## Documentation checks
 
