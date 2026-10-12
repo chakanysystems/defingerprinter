@@ -1,10 +1,20 @@
+{ crane }:
 { pkgs, ... }:
 let
+  craneLib = crane.mkLib pkgs;
+  cargo = pkgs.callPackage ./cargo.nix { inherit craneLib; };
   model = pkgs.callPackage ./model.nix { };
   runtime = pkgs.callPackage ./runtime.nix { };
-  defingerprinter = pkgs.callPackage ./package.nix { inherit model runtime; };
+  defingerprinter = pkgs.callPackage ./package.nix {
+    inherit
+      craneLib
+      cargo
+      model
+      runtime
+      ;
+  };
   book = pkgs.callPackage ./book.nix { };
-  rustdoc = pkgs.callPackage ./rustdoc.nix { };
+  rustdoc = pkgs.callPackage ./rustdoc.nix { inherit craneLib cargo; };
   site = pkgs.callPackage ./site.nix { inherit book rustdoc; };
   sbcl = pkgs.sbcl.withPackages (p: [
     p.cffi
@@ -27,6 +37,14 @@ in
 
   checks = {
     inherit book site;
+    clippy = craneLib.cargoClippy (
+      cargo.commonArgs
+      // {
+        inherit (cargo) cargoArtifacts;
+        cargoClippyExtraArgs = "--all-targets -- -D warnings";
+      }
+    );
+    rustfmt = craneLib.cargoFmt { inherit (cargo.commonArgs) src; };
     c-abi =
       pkgs.runCommand "defingerprinter-c-abi-check"
         {
