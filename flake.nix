@@ -42,8 +42,19 @@
           lib.concatMap (name: discover (path ++ [ name ]) value.${name}) (builtins.attrNames value)
         else
           [ ];
+      # CI builds the default Tract stack. The ORT backend needs a second
+      # dependency tree and a source-built ONNX Runtime, so CI skips it. The
+      # flake still exports those outputs for local use.
+      ciSkip = [
+        ".ort"
+        ".clippy-ort"
+        ".tract-parity"
+        ".runtime"
+      ];
       builds = lib.groupBy (entry: entry.system) (
-        discover [ ] (lib.getAttrs [ "packages" "checks" "devShells" "formatter" ] self)
+        lib.filter (entry: !(builtins.any (suffix: lib.hasSuffix suffix entry.attr) ciSkip)) (
+          discover [ ] (lib.getAttrs [ "packages" "checks" ] self)
+        )
       );
     in
     flake-parts.lib.mkFlake { inherit inputs; } {

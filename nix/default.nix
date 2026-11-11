@@ -71,106 +71,92 @@ let
     cargoExtraArgs = "--locked --offline";
     cargoVendorDir = craneLib.vendorCargoDeps { inherit src; };
   };
-    # Test binaries do not ship. The release profile's fat LTO makes each test
-    # link a single-threaded whole-program pass, and the shipped artifacts never
-    # need those test dependencies. Cache `ci`-profile test dependencies here
-    # instead of the release ones, so every check phase reuses them.
-    withCiTestDeps =
-      args:
-      craneLib.buildDepsOnly (
-        args
-        // { checkPhaseCargoCommand = "cargo test ${args.cargoExtraArgs} --profile ci --no-run"; }
-      );
-    # Default features build the Tract backend and need no native runtime.
-    cargoArtifacts = withCiTestDeps commonArgs;
-    ortArgs = commonArgs // {
-      cargoExtraArgs = "--locked --offline --no-default-features --features ort";
-    };
-    ortArtifacts = withCiTestDeps ortArgs;
-    bothArgs = commonArgs // {
-      cargoExtraArgs = "--locked --offline --features ort";
-    };
-    bothArtifacts = withCiTestDeps bothArgs;
+  # Default features build the Tract backend and need no native runtime.
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  ortArgs = commonArgs // {
+    cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+  };
+  ortArtifacts = craneLib.buildDepsOnly ortArgs;
+  bothArgs = commonArgs // {
+    cargoExtraArgs = "--locked --offline --features ort";
+  };
+  bothArtifacts = craneLib.buildDepsOnly bothArgs;
 
-  defingerprinterArgs =
-    commonArgs
-    // {
-      inherit cargoArtifacts;
-      src = lib.fileset.toSource {
-        root = ../.;
-        fileset = lib.fileset.unions [
-          cargoFiles
-          ../include
-          ../defingerprinter.asd
-          ../lisp
-          ../scripts/collect-rust-licenses.sh
-        ];
-      };
-      nativeBuildInputs = [ jq ];
-      # Compile-time trusted defaults, not process-environment overrides.
-      DEFINGERPRINTER_MODEL_DIR = "${model}";
-      outputs = [
-        "out"
-        "bin"
-        "lib"
-        "dev"
+  defingerprinterArgs = commonArgs // {
+    inherit cargoArtifacts;
+    src = lib.fileset.toSource {
+      root = ../.;
+      fileset = lib.fileset.unions [
+        cargoFiles
+        ../include
+        ../defingerprinter.asd
+        ../lisp
+        ../scripts/collect-rust-licenses.sh
       ];
-      doCheck = true;
-      # Test binaries do not ship. The release profile's fat LTO turns each test
-      # link into a single-threaded whole-program pass, which stalls or exhausts
-      # hosted runners, so tests build with the light `ci` profile.
-      checkPhaseCargoCommand = "cargo test --locked --offline --profile ci";
-      postCheck = "sh tests/notices.sh";
-      postInstall = ''
-        mkdir -p "$out/include" "$out/share/licenses/defingerprinter"
-        cp -R include/. "$out/include/"
-        cp ATTRIBUTION.md "$out/share/licenses/defingerprinter/"
-        cp LICENSE "$out/share/licenses/defingerprinter/"
-        cp -R licenses/. "$out/share/licenses/defingerprinter/"
-        sh scripts/collect-rust-licenses.sh "$out/share/licenses/defingerprinter"
-        bindingDir="$out/share/common-lisp/source/defingerprinter"
-        mkdir -p "$bindingDir/tests"
-        cp defingerprinter.asd "$bindingDir/"
-        cp LICENSE "$bindingDir/"
-        cp -R lisp "$bindingDir/"
-        cp tests/cffi.lisp "$bindingDir/tests/"
-        test -f "$out/lib/libdefingerprinter${stdenv.hostPlatform.extensions.sharedLibrary}"
-      ''
-      + lib.optionalString stdenv.hostPlatform.isDarwin ''
-        install_name_tool -id "$lib/lib/libdefingerprinter.dylib" "$out/lib/libdefingerprinter.dylib"
-      ''
-      + ''
-        moveToOutput "bin" "$bin"
-        moveToOutput "lib" "$lib"
-        moveToOutput "include" "$dev"
-        moveToOutput "share/common-lisp" "$dev"
-      '';
-      passthru = { inherit model runtime; };
-      meta = {
-        description = "Offline Rampart redaction library with a versioned C ABI";
-        mainProgram = "defingerprinter";
-        license = [
-          lib.licenses.mit
-          lib.licenses.cc-by-40
-        ];
-        platforms = [
-          "aarch64-darwin"
-          "aarch64-linux"
-          "x86_64-linux"
-        ];
-      };
     };
+    nativeBuildInputs = [ jq ];
+    # Compile-time trusted defaults, not process-environment overrides.
+    DEFINGERPRINTER_MODEL_DIR = "${model}";
+    outputs = [
+      "out"
+      "bin"
+      "lib"
+      "dev"
+    ];
+    doCheck = true;
+    postCheck = "sh tests/notices.sh";
+    postInstall = ''
+      mkdir -p "$out/include" "$out/share/licenses/defingerprinter"
+      cp -R include/. "$out/include/"
+      cp ATTRIBUTION.md "$out/share/licenses/defingerprinter/"
+      cp LICENSE "$out/share/licenses/defingerprinter/"
+      cp -R licenses/. "$out/share/licenses/defingerprinter/"
+      sh scripts/collect-rust-licenses.sh "$out/share/licenses/defingerprinter"
+      bindingDir="$out/share/common-lisp/source/defingerprinter"
+      mkdir -p "$bindingDir/tests"
+      cp defingerprinter.asd "$bindingDir/"
+      cp LICENSE "$bindingDir/"
+      cp -R lisp "$bindingDir/"
+      cp tests/cffi.lisp "$bindingDir/tests/"
+      test -f "$out/lib/libdefingerprinter${stdenv.hostPlatform.extensions.sharedLibrary}"
+    ''
+    + lib.optionalString stdenv.hostPlatform.isDarwin ''
+      install_name_tool -id "$lib/lib/libdefingerprinter.dylib" "$out/lib/libdefingerprinter.dylib"
+    ''
+    + ''
+      moveToOutput "bin" "$bin"
+      moveToOutput "lib" "$lib"
+      moveToOutput "include" "$dev"
+      moveToOutput "share/common-lisp" "$dev"
+    '';
+    passthru = { inherit model runtime; };
+    meta = {
+      description = "Offline Rampart redaction library with a versioned C ABI";
+      mainProgram = "defingerprinter";
+      license = [
+        lib.licenses.mit
+        lib.licenses.cc-by-40
+      ];
+      platforms = [
+        "aarch64-darwin"
+        "aarch64-linux"
+        "x86_64-linux"
+      ];
+    };
+  };
 
   defingerprinter = craneLib.buildPackage defingerprinterArgs;
 
-    ort = craneLib.buildPackage (
-      lib.recursiveUpdate defingerprinterArgs {
-        cargoArtifacts = ortArtifacts;
-        cargoExtraArgs = "--locked --offline --no-default-features --features ort";
-        checkPhaseCargoCommand = "cargo test --locked --offline --profile ci --no-default-features --features ort";
-        DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
-      }
-    );
+  ort = craneLib.buildPackage (
+    lib.recursiveUpdate defingerprinterArgs {
+      cargoArtifacts = ortArtifacts;
+      cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+      # The ort-only feature set is compiled by clippy-ort and run by tract-parity.
+      # Do not pay a second full fat-LTO test link pass for it.
+      doCheck = false;
+      DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
+    }
+  );
 
   rustdoc = craneLib.cargoDoc (
     commonArgs
@@ -253,18 +239,18 @@ let
   ]);
 in
 {
-    packages = {
-      inherit
-        model
-        runtime
-        defingerprinter
-        ort
-        book
-        rustdoc
-        site
-        ;
-      default = defingerprinter;
-    };
+  packages = {
+    inherit
+      model
+      runtime
+      defingerprinter
+      ort
+      book
+      rustdoc
+      site
+      ;
+    default = defingerprinter;
+  };
 
   checks = {
     inherit book site;
@@ -288,17 +274,18 @@ in
       // {
         cargoArtifacts = bothArtifacts;
         pnameSuffix = "-tract-parity";
-          buildPhaseCargoCommand = "cargo build --locked --offline --profile ci --features ort --example tract_compare";
-          doCheck = true;
-          doInstallCargoArtifacts = false;
-          RAMPART_MODEL_DIR = "${model}";
-          checkPhaseCargoCommand = ''
-            cargo test --locked --offline --profile ci --features ort
-            cargo test --locked --offline --profile ci --features ort --test artifacts -- --ignored
-            cargo test --locked --offline --profile ci --features ort --test tract_upgrade -- --ignored
-            target/ci/examples/tract_compare ${model} ${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary} | tee "$TMPDIR/tract-comparison.log"
-            target/ci/examples/tract_compare ${model}
-          '';
+        buildPhaseCargoCommand = "cargo build --release --locked --offline --jobs 1 --features ort --example tract_compare";
+        doCheck = true;
+        doInstallCargoArtifacts = false;
+        RAMPART_MODEL_DIR = "${model}";
+        # The default package already runs the suite. Here only the ignored
+        # model tests run, so the fat-LTO link count stays low.
+        checkPhaseCargoCommand = ''
+          cargo test --release --locked --offline --jobs 1 --features ort --test artifacts -- --ignored
+          cargo test --release --locked --offline --jobs 1 --features ort --test tract_upgrade -- --ignored
+          target/release/examples/tract_compare ${model} ${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary} | tee "$TMPDIR/tract-comparison.log"
+          target/release/examples/tract_compare ${model}
+        '';
         installPhaseCommand = ''
           mkdir -p "$out"
           cp "$TMPDIR/tract-comparison.log" "$out/results.txt"
@@ -321,7 +308,7 @@ in
       pkgs.runCommand "defingerprinter-cffi-check"
         {
           nativeBuildInputs = [ sbcl ];
-      DEFINGERPRINTER_LIBRARY = "${defingerprinter.lib}/lib/libdefingerprinter${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+          DEFINGERPRINTER_LIBRARY = "${defingerprinter.lib}/lib/libdefingerprinter${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
         }
         ''
             export HOME="$TMPDIR/home" XDG_CACHE_HOME="$TMPDIR/cache"
