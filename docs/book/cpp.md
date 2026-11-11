@@ -13,9 +13,10 @@ Output: `Contact [EMAIL_1]`.
 Use the [Nix package](quickstart.md) and its model/runtime defaults:
 
 ```sh
-PREFIX=$(cd result && pwd -P)
+DEV=$(nix build --print-out-paths .#default.dev)
+LIB=$(nix build --print-out-paths .#default.lib)
 mkdir -p target
-c++ -std=c++17 examples/cpp.cpp -I"$PREFIX/include" -L"$PREFIX/lib" \
-  -Wl,-rpath,"$PREFIX/lib" -ldefingerprinter -o target/example-cpp
+c++ -std=c++17 examples/cpp.cpp -I"$DEV/include" -L"$LIB/lib" \
+  -Wl,-rpath,"$LIB/lib" -ldefingerprinter -o target/example-cpp
 ./target/example-cpp
 ```

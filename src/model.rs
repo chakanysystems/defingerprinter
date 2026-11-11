@@ -4,12 +4,15 @@ use crate::{
     policy::{self, Span},
     tokenizer::{Token, Tokenizer},
 };
+#[cfg(feature = "ort")]
 use ort::{
     session::{Session, builder::GraphOptimizationLevel},
     value::Tensor,
 };
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path, sync::Arc};
+#[cfg(feature = "ort")]
+use std::sync::Arc;
+use std::{fs, path::Path};
 
 pub const ARTIFACTS: [(&str, &str); 4] = [
     (
@@ -30,39 +33,18 @@ pub const ARTIFACTS: [(&str, &str); 4] = [
     ),
 ];
 pub struct Model {
-    session: Session,
+    session: Backend,
     pub tokenizer: Tokenizer,
     labels: Vec<String>,
 }
 impl Model {
+    #[cfg(feature = "ort")]
     pub fn load(directory: &Path, runtime: &Path) -> Result<Self, RedactionError> {
-        let mut bytes = Vec::new();
-        for (name, hash) in ARTIFACTS {
-            let path = directory.join(name);
-            if fs::metadata(&path)
-                .map_err(|_| RedactionError::Artifact)?
-                .len()
-                > 20_000_000
-            {
-                return Err(RedactionError::Artifact);
-            }
-            let data = fs::read(path).map_err(|_| RedactionError::Artifact)?;
-            if format!("{:x}", Sha256::digest(&data)) != hash {
-                return Err(RedactionError::Artifact);
-            }
-            bytes.push(data);
-        }
-        let config: serde_json::Value =
-            serde_json::from_slice(&bytes[0]).map_err(|_| RedactionError::Artifact)?;
-        let labels = (0..35)
-            .map(|i| {
-                config["id2label"][i.to_string()]
-                    .as_str()
-                    .map(String::from)
-                    .ok_or(RedactionError::Artifact)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let tokenizer = Tokenizer::from_json(&bytes[1])?;
+        let VerifiedArtifacts {
+            bytes,
+            tokenizer,
+            labels,
+        } = VerifiedArtifacts::load(directory)?;
         ort::init_from(runtime)
             .map_err(|_| RedactionError::Runtime)?
             .with_name("defingerprinter")
@@ -85,7 +67,45 @@ impl Model {
             .commit_from_memory(&bytes[3])
             .map_err(|_| RedactionError::Runtime)?;
         Ok(Self {
-            session,
+            session: Backend::Ort(session),
+            tokenizer,
+            labels,
+        })
+    }
+    /// Load the pinned graph with the experimental Rust-only Tract CPU backend.
+    #[cfg(feature = "tract")]
+    pub fn load_tract(directory: &Path) -> Result<Self, RedactionError> {
+        Self::load_tract_weights(directory, false)
+    }
+    /// Load Tract with the Q4 weight values expanded to float32 once at load time.
+    /// This permits faster matrix kernels but uses more memory. Model files and
+    /// represented weight values are unchanged.
+    #[cfg(feature = "tract")]
+    pub fn load_tract_expanded(directory: &Path) -> Result<Self, RedactionError> {
+        Self::load_tract_weights(directory, true)
+    }
+    #[cfg(feature = "tract")]
+    fn load_tract_weights(directory: &Path, expanded: bool) -> Result<Self, RedactionError> {
+        use tract_onnx::prelude::*;
+        let VerifiedArtifacts {
+            bytes,
+            tokenizer,
+            labels,
+        } = VerifiedArtifacts::load(directory)?;
+        let session = tract_onnx::onnx()
+            .model_for_read(&mut std::io::Cursor::new(&bytes[3]))
+            .and_then(|model| model.into_typed())
+            .and_then(|mut model| {
+                if expanded {
+                    crate::tract_weights::expand_weights(&mut model)?;
+                }
+                model.into_optimized()
+            })
+            .and_then(|model| model.into_runnable())
+            .and_then(|plan| plan.spawn())
+            .map_err(|_| RedactionError::Runtime)?;
+        Ok(Self {
+            session: Backend::Tract(Box::new(session)),
             tokenizer,
             labels,
         })
@@ -128,24 +148,7 @@ impl Model {
         let mut ids = vec![2];
         ids.extend(tokens.iter().map(|t| t.id));
         ids.push(3);
-        let length = ids.len();
-        let input =
-            Tensor::from_array(([1usize, length], ids)).map_err(|_| RedactionError::Inference)?;
-        let mask = Tensor::from_array(([1usize, length], vec![1i64; length]))
-            .map_err(|_| RedactionError::Inference)?;
-        let types = Tensor::from_array(([1usize, length], vec![0i64; length]))
-            .map_err(|_| RedactionError::Inference)?;
-        let output = self
-            .session
-            .run(ort::inputs!["input_ids"=>input,"attention_mask"=>mask,"token_type_ids"=>types])
-            .map_err(|_| RedactionError::Inference)?;
-        let value = output.get("logits").ok_or(RedactionError::Inference)?;
-        let (shape, logits) = value
-            .try_extract_tensor::<f32>()
-            .map_err(|_| RedactionError::Inference)?;
-        if shape.as_ref() != [1, length as i64, 35] || logits.iter().any(|v| !v.is_finite()) {
-            return Err(RedactionError::Inference);
-        }
+        let logits = self.session.logits(ids)?;
         let mut groups: Vec<(Span, usize)> = Vec::new();
         for (index, token) in tokens.iter().enumerate() {
             // The pinned Transformers classifier excludes all five added special-token IDs.
@@ -205,6 +208,107 @@ impl Model {
                 (span.score >= 0.15).then_some(span)
             })
             .collect())
+    }
+}
+
+// Both backends share artifact verification, tokenization and span policy.
+struct VerifiedArtifacts {
+    bytes: Vec<Vec<u8>>,
+    tokenizer: Tokenizer,
+    labels: Vec<String>,
+}
+impl VerifiedArtifacts {
+    fn load(directory: &Path) -> Result<Self, RedactionError> {
+        let mut bytes = Vec::new();
+        for (name, hash) in ARTIFACTS {
+            let path = directory.join(name);
+            if fs::metadata(&path)
+                .map_err(|_| RedactionError::Artifact)?
+                .len()
+                > 20_000_000
+            {
+                return Err(RedactionError::Artifact);
+            }
+            let data = fs::read(path).map_err(|_| RedactionError::Artifact)?;
+            if format!("{:x}", Sha256::digest(&data)) != hash {
+                return Err(RedactionError::Artifact);
+            }
+            bytes.push(data);
+        }
+        let config: serde_json::Value =
+            serde_json::from_slice(&bytes[0]).map_err(|_| RedactionError::Artifact)?;
+        let labels = (0..35)
+            .map(|i| {
+                config["id2label"][i.to_string()]
+                    .as_str()
+                    .map(String::from)
+                    .ok_or(RedactionError::Artifact)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let tokenizer = Tokenizer::from_json(&bytes[1])?;
+        Ok(Self {
+            bytes,
+            tokenizer,
+            labels,
+        })
+    }
+}
+
+enum Backend {
+    #[cfg(feature = "ort")]
+    Ort(Session),
+    #[cfg(feature = "tract")]
+    Tract(Box<tract_onnx::prelude::TypedSimpleState>),
+}
+impl Backend {
+    fn logits(&mut self, ids: Vec<i64>) -> Result<Vec<f32>, RedactionError> {
+        let length = ids.len();
+        let logits = match self {
+            #[cfg(feature = "ort")]
+            Self::Ort(session) => {
+                let input = Tensor::from_array(([1usize, length], ids))
+                    .map_err(|_| RedactionError::Inference)?;
+                let mask = Tensor::from_array(([1usize, length], vec![1i64; length]))
+                    .map_err(|_| RedactionError::Inference)?;
+                let types = Tensor::from_array(([1usize, length], vec![0i64; length]))
+                    .map_err(|_| RedactionError::Inference)?;
+                let output = session.run(ort::inputs!["input_ids"=>input,"attention_mask"=>mask,"token_type_ids"=>types]).map_err(|_| RedactionError::Inference)?;
+                let value = output.get("logits").ok_or(RedactionError::Inference)?;
+                let (shape, logits) = value
+                    .try_extract_tensor::<f32>()
+                    .map_err(|_| RedactionError::Inference)?;
+                if shape.as_ref() != [1, length as i64, 35] {
+                    return Err(RedactionError::Inference);
+                }
+                logits.to_vec()
+            }
+            #[cfg(feature = "tract")]
+            Self::Tract(session) => {
+                use tract_onnx::prelude::{Tensor, tvec};
+                let tensor = |data: &[i64]| {
+                    Tensor::from_shape(&[1, length], data).map_err(|_| RedactionError::Inference)
+                };
+                let output = session
+                    .run(tvec![
+                        tensor(&ids)?.into(),
+                        tensor(&vec![1; length])?.into(),
+                        tensor(&vec![0; length])?.into()
+                    ])
+                    .map_err(|_| RedactionError::Inference)?;
+                let value = output.first().ok_or(RedactionError::Inference)?;
+                if output.len() != 1 || value.shape() != [1, length, 35] {
+                    return Err(RedactionError::Inference);
+                }
+                value
+                    .try_as_plain_ram()
+                    .and_then(|view| Ok(view.as_slice::<f32>()?.to_vec()))
+                    .map_err(|_| RedactionError::Inference)?
+            }
+        };
+        if logits.iter().any(|v| !v.is_finite()) {
+            return Err(RedactionError::Inference);
+        }
+        Ok(logits)
     }
 }
 

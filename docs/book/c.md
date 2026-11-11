@@ -11,9 +11,10 @@ Output: `Contact [EMAIL_1]`. `written` is the output byte count; the output has 
 Use the [Nix package](quickstart.md) and its model/runtime defaults:
 
 ```sh
-PREFIX=$(cd result && pwd -P)
+DEV=$(nix build --print-out-paths .#default.dev)
+LIB=$(nix build --print-out-paths .#default.lib)
 mkdir -p target
-cc examples/c.c -I"$PREFIX/include" -L"$PREFIX/lib" \
-  -Wl,-rpath,"$PREFIX/lib" -ldefingerprinter -o target/example-c
+cc examples/c.c -I"$DEV/include" -L"$LIB/lib" \
+  -Wl,-rpath,"$LIB/lib" -ldefingerprinter -o target/example-c
 ./target/example-c
 ```

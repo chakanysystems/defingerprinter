@@ -171,7 +171,7 @@ pub unsafe extern "C" fn defingerprinter_create(
                 }
                 (PathBuf::from(directory), PathBuf::from(runtime))
             };
-        if !directory.is_absolute() || !runtime.is_absolute() {
+        if !directory.is_absolute() || (cfg!(feature = "ort") && !runtime.is_absolute()) {
             return Err(Status::InvalidArgument);
         }
         let mut registry = registry().lock().map_err(|_| Status::InternalError)?;

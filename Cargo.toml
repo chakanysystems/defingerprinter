@@ -11,14 +11,33 @@ license = "MIT AND CC-BY-4.0"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["tract"]
+ort = ["dep:ort"]
+tract = ["dep:tract-onnx"]
+tract-expanded = ["tract"]
+
+[[example]]
+name = "tract_compare"
+required-features = ["tract", "ort"]
+
+[[example]]
+name = "tract_profile"
+required-features = ["tract"]
+
+[[example]]
+name = "pii_eval"
+required-features = ["tract", "ort"]
+
 [dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-22"] }
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "load-dynamic", "api-22"] }
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 unicode-normalization = "0.1"
 unicode-general-category = "1"
+tract-onnx = { version = "=0.23.8", optional = true }
 
 [profile.release]
 opt-level = "z"

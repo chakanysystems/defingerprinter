@@ -11,9 +11,10 @@ Output: `Contact [EMAIL_1]`. `redact` returns the text and a status; `with-redac
 Install CFFI, Babel, and Bordeaux-Threads. With the [Nix package](quickstart.md):
 
 ```sh
-PREFIX=$(cd result && pwd -P)
-DEFINGERPRINTER_ASD="$PREFIX/share/common-lisp/source/defingerprinter/defingerprinter.asd" \
-DEFINGERPRINTER_LIBRARY="$PREFIX/lib/libdefingerprinter.dylib" \
+DEV=$(nix build --print-out-paths .#default.dev)
+LIB=$(nix build --print-out-paths .#default.lib)
+DEFINGERPRINTER_ASD="$DEV/share/common-lisp/source/defingerprinter/defingerprinter.asd" \
+DEFINGERPRINTER_LIBRARY="$LIB/lib/libdefingerprinter.dylib" \
   sbcl --script examples/lisp.lisp
 ```
 

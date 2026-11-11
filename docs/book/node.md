@@ -7,7 +7,6 @@
 Call the JSONL subprocess interface with Node's standard library; the Nix-built executable uses compiled model and runtime defaults.
 
 ```sh
-nix build
-PREFIX=$(cd result && pwd -P)
-node examples/node.mjs "$PREFIX/bin/defingerprinter"
+BIN=$(nix build --print-out-paths .#default.bin)
+node examples/node.mjs "$BIN/bin/defingerprinter"
 ```

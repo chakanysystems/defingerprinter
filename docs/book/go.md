@@ -7,7 +7,6 @@
 Call the JSONL subprocess interface with Go's standard library; the Nix-built executable uses compiled model and runtime defaults.
 
 ```sh
-nix build
-PREFIX=$(cd result && pwd -P)
-go run examples/go/main.go "$PREFIX/bin/defingerprinter"
+BIN=$(nix build --print-out-paths .#default.bin)
+go run examples/go/main.go "$BIN/bin/defingerprinter"
 ```

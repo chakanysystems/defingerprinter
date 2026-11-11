@@ -1,6 +1,6 @@
 //! Shared input policy and lazily loaded local model session.
 use crate::{RedactionError, model::Model};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Maximum accepted UTF-8 input size in bytes (16,384).
 ///
@@ -19,7 +19,7 @@ pub const OUTPUT_CAPACITY: usize = MAX_OUTPUT_CHARS * 4;
 /// A lazily loaded local redaction session.
 ///
 /// Use a mutable instance to serialize calls. Dropping it drops its model
-/// session, but does not unload the process-global ONNX Runtime. Input text is
+/// session, but does not unload the process-global native runtime. Input text is
 /// not retained for retries. The caller owns collection and privacy policy.
 ///
 /// ```
@@ -67,7 +67,7 @@ impl Redactor {
         }
         let result = (|| {
             if self.model.is_none() {
-                self.model = Some(Model::load(&self.directory, &self.runtime)?);
+                self.model = Some(load_model(&self.directory, &self.runtime)?);
             }
             self.model
                 .as_mut()
@@ -83,12 +83,38 @@ impl Redactor {
         }
     }
 }
+
+/// Load the pinned model with the compile-time backend.
+///
+/// An `ort` build loads the native runtime from `runtime`. A Tract-only build
+/// ignores `runtime` and uses packed Q4 weights, or expanded weights with the
+/// `tract-expanded` feature.
+#[cfg(feature = "ort")]
+pub fn load_model(directory: &Path, runtime: &Path) -> Result<Model, RedactionError> {
+    Model::load(directory, runtime)
+}
+
+#[cfg(all(feature = "tract", not(feature = "ort")))]
+/// Load the pinned model with packed or expanded Tract weights.
+#[cfg(all(feature = "tract", not(feature = "ort")))]
+pub fn load_model(directory: &Path, _runtime: &Path) -> Result<Model, RedactionError> {
+    #[cfg(feature = "tract-expanded")]
+    {
+        Model::load_tract_expanded(directory)
+    }
+    #[cfg(not(feature = "tract-expanded"))]
+    {
+        Model::load_tract(directory)
+    }
+}
 /// Return the model-directory and runtime-library paths embedded at compile time.
 ///
-/// Both `DEFINGERPRINTER_MODEL_DIR` and `DEFINGERPRINTER_RUNTIME` must have been
-/// set when compiling this crate, otherwise returns `None`. Nix builds normally
-/// provide immutable paths. These are compile-time settings, not runtime
-/// environment-variable overrides. Calling this function does not access files.
+/// An `ort` build needs both `DEFINGERPRINTER_MODEL_DIR` and
+/// `DEFINGERPRINTER_RUNTIME` at compile time, otherwise returns `None`. A
+/// Tract-only build needs only the model directory and returns an empty runtime
+/// path. Nix builds provide immutable paths. These are compile-time settings,
+/// not runtime environment-variable overrides. Calling this function does not
+/// access files.
 ///
 /// ```
 /// if let Some((model, runtime)) = defingerprinter::engine::compiled_paths() {
@@ -96,10 +122,12 @@ impl Redactor {
 /// }
 /// ```
 pub fn compiled_paths() -> Option<(PathBuf, PathBuf)> {
-    Some((
-        option_env!("DEFINGERPRINTER_MODEL_DIR")?.into(),
-        option_env!("DEFINGERPRINTER_RUNTIME")?.into(),
-    ))
+    let model = option_env!("DEFINGERPRINTER_MODEL_DIR")?;
+    #[cfg(feature = "ort")]
+    let runtime = option_env!("DEFINGERPRINTER_RUNTIME")?;
+    #[cfg(not(feature = "ort"))]
+    let runtime = "";
+    Some((model.into(), runtime.into()))
 }
 /// Check input admission without loading a model or performing redaction.
 ///

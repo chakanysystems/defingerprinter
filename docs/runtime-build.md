@@ -1,6 +1,6 @@
 # Reduced CPU runtime
 
-Defingerprinter uses ONNX Runtime 1.24.2, reduced to the original pinned Rampart q4 graph. Keep graph optimization disabled: graph rewrites can introduce kernels outside the operator list.
+`packages.ort` uses ONNX Runtime 1.24.2, reduced to the original pinned Rampart q4 graph. The default package uses the Tract backend and does not load this library. Keep graph optimization disabled: graph rewrites can introduce kernels outside the operator list.
 
 ## Nix build
 

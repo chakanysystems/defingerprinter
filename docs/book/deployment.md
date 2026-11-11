@@ -3,14 +3,20 @@
 ## Nix package layout
 
 ```text
-bin/defingerprinter
-lib/libdefingerprinter.dylib           # .so on Linux
-include/defingerprinter.h
-share/common-lisp/source/defingerprinter/
-share/licenses/defingerprinter/
+default/                                  # licenses and notices
+  share/licenses/defingerprinter/
+bin/
+  bin/defingerprinter
+lib/
+  lib/libdefingerprinter.dylib           # .so on Linux
+dev/
+  include/defingerprinter.h
+  share/common-lisp/source/defingerprinter/
 ```
 
 Model and runtime are separate store outputs referenced by immutable compile-time paths. Copy or deploy the **complete Nix closure**, rather than moving just the executable or shared library. Obtain the closure's references with your usual Nix deployment tooling.
+
+Each package has four outputs. Select one with `nix build .#default.bin`, `.#default.lib` or `.#default.dev`.
 
 ```sh
 nix build .#default

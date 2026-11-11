@@ -1,6 +1,6 @@
 # Defingerprinter
 
-Defingerprinter is an offline diagnostic redaction library. It's implemented in Rust, with a versioned C ABI, Common Lisp CFFI bindings, and a self-contained Nix flake. The pinned Rampart q4 model runs locally on a reduced CPU-only ONNX Runtime. No runtime model downloads or network access are required.
+Defingerprinter is an offline diagnostic redaction library. It's implemented in Rust, with a versioned C ABI, Common Lisp CFFI bindings, and a self-contained Nix flake. The pinned Rampart q4 model runs locally. The default build uses the Tract backend and needs no native runtime; the optional `ort` package uses a reduced CPU-only ONNX Runtime. No runtime model downloads or network access are required.
 
 ## Policy and privacy
 
@@ -19,9 +19,9 @@ nix build .#default
 nix flake check
 ```
 
-Outputs include `bin/defingerprinter`, `lib/libdefingerprinter.dylib` (Darwin) or `.so` (Linux), `include/defingerprinter.h`, and `share/common-lisp/source/defingerprinter/`. Model and runtime are separate store outputs, referenced by immutable compile-time paths. Preserve the complete Nix closure when deploying.
+Outputs separate the artifacts. `bin` holds `defingerprinter`. `lib` holds `libdefingerprinter.dylib` (Darwin) or `.so` (Linux). `dev` holds `include/defingerprinter.h` and `share/common-lisp/source/defingerprinter/`. The default output holds licenses and notices. Model and runtime are separate store outputs, referenced by immutable compile-time paths. Preserve the complete Nix closure when deploying.
 
-The flake exposes `packages.<system>.{default,defingerprinter,model,runtime,book,rustdoc,site}` for `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`. Darwin arm64 is the locally tested platform; Linux outputs require native build validation. C ABI and CFFI checks perform actual model inference using compiled defaults.
+The flake exposes `packages.<system>.{default,defingerprinter,ort,model,runtime,book,rustdoc,site}` for `aarch64-darwin`, `aarch64-linux`, and `x86_64-linux`. Each package has `bin`, `lib` and `dev` outputs. Darwin arm64 is the locally tested platform; Linux outputs require native build validation. C ABI and CFFI checks perform actual model inference using compiled defaults.
 
 Import the local repository from another flake:
 
@@ -55,7 +55,7 @@ Install the ASDF sources with CFFI, Babel and Bordeaux-Threads. Load the shared 
 
 Contexts initialize the model lazily on the first valid redaction call. `redact` returns a redacted string and `:ok`, or `nil` and a static status. Closure drops the session and waits for in-flight redaction, including Lisp decoding. Use `with-redactor` or explicitly call `close-redactor`; there is no GC finalizer. Setup failures signal `setup-error` with a static status and a `retry` restart.
 
-For a non-Nix build, provide both absolute `:model-directory` and `:runtime-library` paths to `make-redactor`. Load one shared library and one ONNX Runtime path per process. Restart the process to change the runtime.
+For a non-Nix build, provide both absolute `:model-directory` and `:runtime-library` paths to `make-redactor`. The default Tract build ignores the runtime path; the `ort` build loads one ONNX Runtime path per process. Restart the process to change the runtime.
 
 ## C ABI
 

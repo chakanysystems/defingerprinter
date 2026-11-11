@@ -17,8 +17,8 @@ With the `ctypes` declarations below:
 With the [Nix package](quickstart.md):
 
 ```sh
-PREFIX=$(cd result && pwd -P)
-python3 examples/python.py "$PREFIX/lib/libdefingerprinter.dylib"
+LIB=$(nix build --print-out-paths .#default.lib)
+python3 examples/python.py "$LIB/lib/libdefingerprinter.dylib"
 ```
 
 Use `.so` instead of `.dylib` on Linux.

@@ -71,9 +71,18 @@ let
     cargoExtraArgs = "--locked --offline";
     cargoVendorDir = craneLib.vendorCargoDeps { inherit src; };
   };
+  # Default features build the Tract backend and need no native runtime.
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  ortArgs = commonArgs // {
+    cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+  };
+  ortArtifacts = craneLib.buildDepsOnly ortArgs;
+  bothArgs = commonArgs // {
+    cargoExtraArgs = "--locked --offline --features ort";
+  };
+  bothArtifacts = craneLib.buildDepsOnly bothArgs;
 
-  defingerprinter = craneLib.buildPackage (
+  defingerprinterArgs =
     commonArgs
     // {
       inherit cargoArtifacts;
@@ -90,7 +99,12 @@ let
       nativeBuildInputs = [ jq ];
       # Compile-time trusted defaults, not process-environment overrides.
       DEFINGERPRINTER_MODEL_DIR = "${model}";
-      DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
+      outputs = [
+        "out"
+        "bin"
+        "lib"
+        "dev"
+      ];
       doCheck = true;
       postCheck = "sh tests/notices.sh";
       postInstall = ''
@@ -109,7 +123,13 @@ let
         test -f "$out/lib/libdefingerprinter${stdenv.hostPlatform.extensions.sharedLibrary}"
       ''
       + lib.optionalString stdenv.hostPlatform.isDarwin ''
-        install_name_tool -id "$out/lib/libdefingerprinter.dylib" "$out/lib/libdefingerprinter.dylib"
+        install_name_tool -id "$lib/lib/libdefingerprinter.dylib" "$out/lib/libdefingerprinter.dylib"
+      ''
+      + ''
+        moveToOutput "bin" "$bin"
+        moveToOutput "lib" "$lib"
+        moveToOutput "include" "$dev"
+        moveToOutput "share/common-lisp" "$dev"
       '';
       passthru = { inherit model runtime; };
       meta = {
@@ -125,6 +145,15 @@ let
           "x86_64-linux"
         ];
       };
+    };
+
+  defingerprinter = craneLib.buildPackage defingerprinterArgs;
+
+  ort = craneLib.buildPackage (
+    lib.recursiveUpdate defingerprinterArgs {
+      cargoArtifacts = ortArtifacts;
+      cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+      DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
     }
   );
 
@@ -209,28 +238,58 @@ let
   ]);
 in
 {
-  packages = {
-    inherit
-      model
-      runtime
-      defingerprinter
-      book
-      rustdoc
-      site
-      ;
-    default = defingerprinter;
-  };
+    packages = {
+      inherit
+        model
+        runtime
+        defingerprinter
+        ort
+        book
+        rustdoc
+        site
+        ;
+      default = defingerprinter;
+    };
 
   checks = {
     inherit book site;
     clippy = craneLib.cargoClippy (
-      commonArgs
+      bothArgs
       // {
-        inherit cargoArtifacts;
+        cargoArtifacts = bothArtifacts;
+        cargoClippyExtraArgs = "--all-targets -- -D warnings";
+      }
+    );
+    clippy-ort = craneLib.cargoClippy (
+      ortArgs
+      // {
+        cargoArtifacts = ortArtifacts;
         cargoClippyExtraArgs = "--all-targets -- -D warnings";
       }
     );
     rustfmt = craneLib.cargoFmt { inherit src; };
+    tract-parity = craneLib.mkCargoDerivation (
+      bothArgs
+      // {
+        cargoArtifacts = bothArtifacts;
+        pnameSuffix = "-tract-parity";
+        buildPhaseCargoCommand = "cargo build --release --locked --offline --features ort --example tract_compare";
+        doCheck = true;
+        doInstallCargoArtifacts = false;
+        RAMPART_MODEL_DIR = "${model}";
+        checkPhaseCargoCommand = ''
+          cargo test --release --locked --offline --features ort
+          cargo test --release --locked --offline --features ort --test artifacts -- --ignored
+            cargo test --release --locked --offline --features ort --test tract_upgrade -- --ignored
+          target/release/examples/tract_compare ${model} ${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary} | tee "$TMPDIR/tract-comparison.log"
+          target/release/examples/tract_compare ${model}
+        '';
+        installPhaseCommand = ''
+          mkdir -p "$out"
+          cp "$TMPDIR/tract-comparison.log" "$out/results.txt"
+        '';
+      }
+    );
     c-abi =
       pkgs.runCommand "defingerprinter-c-abi-check"
         {
@@ -238,8 +297,8 @@ in
         }
         ''
           $CC -std=c11 -Wall -Wextra -Werror ${../tests/c_abi.c} \
-            -I${defingerprinter}/include -L${defingerprinter}/lib \
-            -Wl,-rpath,${defingerprinter}/lib -ldefingerprinter -pthread -o smoke
+            -I${defingerprinter.dev}/include -L${defingerprinter.lib}/lib \
+            -Wl,-rpath,${defingerprinter.lib}/lib -ldefingerprinter -pthread -o smoke
           ./smoke
           touch "$out"
         '';
@@ -247,14 +306,16 @@ in
       pkgs.runCommand "defingerprinter-cffi-check"
         {
           nativeBuildInputs = [ sbcl ];
-          DEFINGERPRINTER_LIBRARY = "${defingerprinter}/lib/libdefingerprinter${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+      DEFINGERPRINTER_LIBRARY = "${defingerprinter.lib}/lib/libdefingerprinter${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
         }
         ''
-          export HOME="$TMPDIR/home" XDG_CACHE_HOME="$TMPDIR/cache"
-          mkdir -p "$HOME" "$XDG_CACHE_HOME"
-          sbcl --non-interactive --eval '(require :asdf)' \
-            --eval '(asdf:load-asd #P"${defingerprinter}/share/common-lisp/source/defingerprinter/defingerprinter.asd")' \
-            --eval '(asdf:test-system "defingerprinter")'
+            export HOME="$TMPDIR/home" XDG_CACHE_HOME="$TMPDIR/cache"
+            # nixpkgs lisp packages ship fasls built with an older SBCL.
+            export ASDF_OUTPUT_TRANSLATIONS="/:$TMPDIR/cache/asdf"
+            mkdir -p "$HOME" "$XDG_CACHE_HOME" "$TMPDIR/cache/asdf"
+            sbcl --non-interactive --eval '(require :asdf)' \
+              --eval '(asdf:load-asd #P"${defingerprinter.dev}/share/common-lisp/source/defingerprinter/defingerprinter.asd")' \
+              --eval '(asdf:test-system "defingerprinter")' --quit
           touch "$out"
         '';
   };

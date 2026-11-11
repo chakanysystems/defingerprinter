@@ -72,32 +72,40 @@ A RETRY restart permits correcting a failed setup without retaining its cause."
   (let ((bytes (babel:string-to-octets (absolute-path-string path) :encoding :utf-8)))
     (unless (<= 1 (length bytes) 4096) (setup-failure :invalid-argument))
     bytes))
+(defmacro with-masked-float-traps (&body body)
+  "Mask floating-point traps around native calls.
+Tract inference raises an invalid-operation flag. SBCL traps it by default."
+  #+sbcl `(sb-int:with-float-traps-masked (:invalid :divide-by-zero :overflow :underflow)
+            ,@body)
+  #-sbcl `(progn ,@body))
 
-(defun create-native (model runtime)
-  (cffi:with-foreign-object (handle :uint64)
-    (setf (cffi:mem-ref handle :uint64) 0)
-    (labels ((create (model-pointer model-length runtime-pointer runtime-length)
-               (let ((status
-                       (status-keyword
-                        (cffi:foreign-funcall-pointer
-                         (native-symbol "defingerprinter_create") ()
-                         :pointer model-pointer :size model-length
-                         :pointer runtime-pointer :size runtime-length
-                         :pointer handle :int32))))
-                 (unless (eq status :ok) (setup-failure status))
-                (let ((context nil)
-                      (native-handle (cffi:mem-ref handle :uint64)))
-                  (unwind-protect
-                       (setf context (make-instance 'redactor :handle native-handle))
-                    (unless context
-                      (cffi:foreign-funcall-pointer
-                       (native-symbol "defingerprinter_destroy") ()
-                       :uint64 native-handle :int32)))))))
-      (if model
-          (cffi:with-pointer-to-vector-data (model-pointer model)
-            (cffi:with-pointer-to-vector-data (runtime-pointer runtime)
-              (create model-pointer (length model) runtime-pointer (length runtime))))
-          (create (cffi:null-pointer) 0 (cffi:null-pointer) 0)))))
+  (defun create-native (model runtime)
+    (cffi:with-foreign-object (handle :uint64)
+      (setf (cffi:mem-ref handle :uint64) 0)
+      (labels ((create (model-pointer model-length runtime-pointer runtime-length)
+                 (let ((status
+                         (status-keyword
+                          (with-masked-float-traps
+                            (cffi:foreign-funcall-pointer
+                             (native-symbol "defingerprinter_create") ()
+                             :pointer model-pointer :size model-length
+                             :pointer runtime-pointer :size runtime-length
+                             :pointer handle :int32)))))
+                   (unless (eq status :ok) (setup-failure status))
+                   (let ((context nil)
+                         (native-handle (cffi:mem-ref handle :uint64)))
+                     (unwind-protect
+                          (setf context (make-instance 'redactor :handle native-handle))
+                       (unless context
+                         (with-masked-float-traps
+                           (cffi:foreign-funcall-pointer
+                            (native-symbol "defingerprinter_destroy") ()
+                             :uint64 native-handle :int32))))))))
+        (if model
+            (cffi:with-pointer-to-vector-data (model-pointer model)
+              (cffi:with-pointer-to-vector-data (runtime-pointer runtime)
+                (create model-pointer (length model) runtime-pointer (length runtime))))
+            (create (cffi:null-pointer) 0 (cffi:null-pointer) 0)))))
 
 (defun make-redactor (&key model-directory runtime-library)
   "Create a live context. Omit both paths for immutable Nix defaults.
@@ -130,14 +138,15 @@ Explicit paths must be absolute; model initialization is lazy."
       (cffi:with-pointer-to-vector-data (language-pointer language-bytes)
         (cffi:with-foreign-objects ((output :uint8 4096) (written :size))
           (setf (cffi:mem-ref written :size) 0)
-          (let ((status
-                  (status-keyword
-                   (cffi:foreign-funcall-pointer
-                    (native-symbol "defingerprinter_redact") ()
-                    :uint64 (redactor-handle context)
-                    :pointer language-pointer :size (length language-bytes)
-                    :pointer input-pointer :size (length input)
-                    :pointer output :size 4096 :pointer written :int32))))
+            (let ((status
+                    (status-keyword
+                     (with-masked-float-traps
+                       (cffi:foreign-funcall-pointer
+                        (native-symbol "defingerprinter_redact") ()
+                        :uint64 (redactor-handle context)
+                        :pointer language-pointer :size (length language-bytes)
+                        :pointer input-pointer :size (length input)
+                        :pointer output :size 4096 :pointer written :int32)))))
             (unless (eq status :ok) (return-from redact-native (values nil status)))
             (let ((length (cffi:mem-ref written :size)))
               (unless (<= length 4096)
@@ -159,10 +168,11 @@ The context lock covers inference and output decoding. No raw-text conditions es
   "Destroy a context synchronously. Repeated closes return :OK."
   (bt:with-lock-held ((redactor-lock context))
     (if (redactor-handle context)
-        (let ((status (status-keyword
-                       (cffi:foreign-funcall-pointer
-                        (native-symbol "defingerprinter_destroy") ()
-                        :uint64 (redactor-handle context) :int32))))
+          (let ((status (status-keyword
+                         (with-masked-float-traps
+                           (cffi:foreign-funcall-pointer
+                            (native-symbol "defingerprinter_destroy") ()
+                            :uint64 (redactor-handle context) :int32)))))
           (when (member status '(:ok :invalid-handle))
             (setf (redactor-handle context) nil))
           status)

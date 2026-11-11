@@ -30,16 +30,29 @@ impl Drop for Directory {
     }
 }
 fn assert_artifact_failure(path: &Path) {
-    let error = match Model::load(path, Path::new("/missing/private-runtime-fixture")) {
-        Ok(_) => panic!("unverified artifacts were accepted"),
-        Err(error) => error,
-    };
-    assert!(
-        matches!(error, RedactionError::Artifact),
-        "artifact failure must precede runtime loading"
-    );
-    assert!(!error.to_string().contains("private-runtime-fixture"));
-    assert!(!error.to_string().contains(&path.display().to_string()));
+    #[cfg(feature = "ort")]
+    {
+        let error = match Model::load(path, Path::new("/missing/private-runtime-fixture")) {
+            Ok(_) => panic!("unverified artifacts were accepted"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error, RedactionError::Artifact),
+            "artifact failure must precede runtime loading"
+        );
+        assert!(!error.to_string().contains("private-runtime-fixture"));
+        assert!(!error.to_string().contains(&path.display().to_string()));
+    }
+    #[cfg(feature = "tract")]
+    {
+        for load in [Model::load_tract, Model::load_tract_expanded] {
+            let error = match load(path) {
+                Ok(_) => panic!("unverified artifacts were accepted by Tract"),
+                Err(error) => error,
+            };
+            assert!(matches!(error, RedactionError::Artifact));
+        }
+    }
 }
 
 #[test]

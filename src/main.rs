@@ -1,7 +1,7 @@
 //! Bounded JSONL with lazy local inference. No raw diagnostic error output.
 use defingerprinter::{
     RedactionError,
-    engine::{compiled_paths, supported},
+    engine::{compiled_paths, load_model, supported},
     model::Model,
 };
 use serde::Deserialize;
@@ -59,7 +59,7 @@ impl State {
     }
     fn ready(&mut self) -> Result<&mut Model, RedactionError> {
         if self.model.is_none() {
-            self.model = Some(Model::load(&self.directory, &self.runtime)?);
+            self.model = Some(load_model(&self.directory, &self.runtime)?);
         }
         self.model.as_mut().ok_or(RedactionError::Runtime)
     }

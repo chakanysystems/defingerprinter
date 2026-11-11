@@ -1,4 +1,5 @@
 //! Subprocess coverage of actual JSONL lazy loading and failure boundaries.
+#![cfg(feature = "ort")]
 use serde_json::{Value, json};
 use std::{
     env,

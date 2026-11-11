@@ -58,6 +58,10 @@ pub mod ffi;
 pub mod model;
 pub mod policy;
 pub mod tokenizer;
+#[cfg(feature = "tract")]
+mod tract_weights;
+#[cfg(not(any(feature = "ort", feature = "tract")))]
+compile_error!("enable the `ort` or `tract` feature");
 
 /// Failure category returned by the Rust redaction pipeline.
 ///

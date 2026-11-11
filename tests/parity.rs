@@ -1,4 +1,5 @@
 //! Actual-model parity. Generate reference fixtures and run via node ops/test-native-parity.mjs.
+#![cfg(feature = "ort")]
 use defingerprinter::model::Model;
 use serde_json::Value;
 use std::{env, fs, path::PathBuf};

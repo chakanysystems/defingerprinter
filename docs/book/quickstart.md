@@ -3,10 +3,9 @@
 From the repository root:
 
 ```sh
-nix build .#default
-PREFIX=$(cd result && pwd -P)
+BIN=$(nix build --print-out-paths .#default.bin)
 printf '%s\n' '{"op":"redact","language":"en","text":"Contact alice@example.com"}' \
-  | "$PREFIX/bin/defingerprinter"
+  | "$BIN/bin/defingerprinter"
 ```
 
 Response:
