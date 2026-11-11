@@ -71,16 +71,26 @@ let
     cargoExtraArgs = "--locked --offline";
     cargoVendorDir = craneLib.vendorCargoDeps { inherit src; };
   };
-  # Default features build the Tract backend and need no native runtime.
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-  ortArgs = commonArgs // {
-    cargoExtraArgs = "--locked --offline --no-default-features --features ort";
-  };
-  ortArtifacts = craneLib.buildDepsOnly ortArgs;
-  bothArgs = commonArgs // {
-    cargoExtraArgs = "--locked --offline --features ort";
-  };
-  bothArtifacts = craneLib.buildDepsOnly bothArgs;
+    # Test binaries do not ship. The release profile's fat LTO makes each test
+    # link a single-threaded whole-program pass, and the shipped artifacts never
+    # need those test dependencies. Cache `ci`-profile test dependencies here
+    # instead of the release ones, so every check phase reuses them.
+    withCiTestDeps =
+      args:
+      craneLib.buildDepsOnly (
+        args
+        // { checkPhaseCargoCommand = "cargo test ${args.cargoExtraArgs} --profile ci --no-run"; }
+      );
+    # Default features build the Tract backend and need no native runtime.
+    cargoArtifacts = withCiTestDeps commonArgs;
+    ortArgs = commonArgs // {
+      cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+    };
+    ortArtifacts = withCiTestDeps ortArgs;
+    bothArgs = commonArgs // {
+      cargoExtraArgs = "--locked --offline --features ort";
+    };
+    bothArtifacts = withCiTestDeps bothArgs;
 
   defingerprinterArgs =
     commonArgs
@@ -106,6 +116,10 @@ let
         "dev"
       ];
       doCheck = true;
+      # Test binaries do not ship. The release profile's fat LTO turns each test
+      # link into a single-threaded whole-program pass, which stalls or exhausts
+      # hosted runners, so tests build with the light `ci` profile.
+      checkPhaseCargoCommand = "cargo test --locked --offline --profile ci";
       postCheck = "sh tests/notices.sh";
       postInstall = ''
         mkdir -p "$out/include" "$out/share/licenses/defingerprinter"
@@ -149,13 +163,14 @@ let
 
   defingerprinter = craneLib.buildPackage defingerprinterArgs;
 
-  ort = craneLib.buildPackage (
-    lib.recursiveUpdate defingerprinterArgs {
-      cargoArtifacts = ortArtifacts;
-      cargoExtraArgs = "--locked --offline --no-default-features --features ort";
-      DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
-    }
-  );
+    ort = craneLib.buildPackage (
+      lib.recursiveUpdate defingerprinterArgs {
+        cargoArtifacts = ortArtifacts;
+        cargoExtraArgs = "--locked --offline --no-default-features --features ort";
+        checkPhaseCargoCommand = "cargo test --locked --offline --profile ci --no-default-features --features ort";
+        DEFINGERPRINTER_RUNTIME = "${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary}";
+      }
+    );
 
   rustdoc = craneLib.cargoDoc (
     commonArgs
@@ -273,17 +288,17 @@ in
       // {
         cargoArtifacts = bothArtifacts;
         pnameSuffix = "-tract-parity";
-        buildPhaseCargoCommand = "cargo build --release --locked --offline --features ort --example tract_compare";
-        doCheck = true;
-        doInstallCargoArtifacts = false;
-        RAMPART_MODEL_DIR = "${model}";
-        checkPhaseCargoCommand = ''
-          cargo test --release --locked --offline --features ort
-          cargo test --release --locked --offline --features ort --test artifacts -- --ignored
-            cargo test --release --locked --offline --features ort --test tract_upgrade -- --ignored
-          target/release/examples/tract_compare ${model} ${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary} | tee "$TMPDIR/tract-comparison.log"
-          target/release/examples/tract_compare ${model}
-        '';
+          buildPhaseCargoCommand = "cargo build --locked --offline --profile ci --features ort --example tract_compare";
+          doCheck = true;
+          doInstallCargoArtifacts = false;
+          RAMPART_MODEL_DIR = "${model}";
+          checkPhaseCargoCommand = ''
+            cargo test --locked --offline --profile ci --features ort
+            cargo test --locked --offline --profile ci --features ort --test artifacts -- --ignored
+            cargo test --locked --offline --profile ci --features ort --test tract_upgrade -- --ignored
+            target/ci/examples/tract_compare ${model} ${runtime}/lib/libonnxruntime${stdenv.hostPlatform.extensions.sharedLibrary} | tee "$TMPDIR/tract-comparison.log"
+            target/ci/examples/tract_compare ${model}
+          '';
         installPhaseCommand = ''
           mkdir -p "$out"
           cp "$TMPDIR/tract-comparison.log" "$out/results.txt"

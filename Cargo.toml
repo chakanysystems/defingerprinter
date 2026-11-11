@@ -46,3 +46,11 @@ lto = "fat"
 codegen-units = 1
 strip = "symbols"
 panic = "unwind"
+
+# Test binaries do not ship. Dropping fat LTO keeps the check-phase link time
+# and peak memory inside hosted runner limits.
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = "none"
