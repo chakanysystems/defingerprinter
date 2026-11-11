@@ -10,6 +10,15 @@
     };
   };
 
+  nixConfig = {
+    extra-substituters = [
+      "https://chakanysystems.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "chakanysystems.cachix.org-1:CrOLPTDUiqSl0smxWe7ppgK8S4d4VGg47mVzEkrclko="
+    ];
+  };
+
   outputs =
     inputs@{ self, flake-parts, ... }:
     let
