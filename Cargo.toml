@@ -1,9 +1,10 @@
 [package]
 name = "defingerprinter"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Offline native PII redaction with a stable C ABI"
-authors = ["Chakany Systems"]
+authors = ["Jack Chakany <jack@chakany.systems>"]
+publish = false
 license = "MIT AND CC-BY-4.0"
 
 [workspace]
